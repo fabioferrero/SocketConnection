@@ -1,6 +1,4 @@
-# README #
-
-conn.h
+# CONN.H #
 
 ### What is this repository for? ###
 
