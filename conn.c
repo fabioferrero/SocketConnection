@@ -5,12 +5,9 @@
 #include <arpa/inet.h>
 #include <netinet/in.h> // Address conversion
 
-/* 	int socket(int family, int type, int protocol); RETURN file descr. ERROR -1
-
+/*
  	family: AF_INET	 for IPv4  type: SOCK_STREAM for TCP  protocol: IPPROTO_TCP
  			AF_INET6 for IPv6		 SOCK_DGRAM  for UDP 			IPPROTO_UDP
-
- 	int bind(int socket, struct sockaddr *address, size_t addrlen);
 
  	struct sockaddr_in {				htonl -> Host to Network long (address)
  		short sin_family;				htons -> Host to Network short (port)
@@ -24,19 +21,6 @@
 
  	int   inet_aton(char *str, struct in_addr *addr); RETURN 1 ERROR 0
  	char* inet_ntoa(struct in_addr addr);
-
- 	int listen(int socket, int size_of_queue);
-
- 	int accept(int socket, struct sockaddr *source, size_t *addrlen);
-
- 	int connect(int socket, struct sockaddr *dest, size_t addrlen);
-
- 	SENDING/RECEIVE DATA
-
- 	size_t send(int socket, void *data, size_t datalen, int flags);
- 	size_t recv(int socket, void *data, size_t datalen, int flags);
- 		RETURN number of byte send or received or 0 if CONN_CLOSED
-
 */
 
 #define SA struct sockaddr
@@ -56,36 +40,29 @@ void report_err(char *message) {
 	return;
 }
 
-int checkaddress(char * address) {
-	int a, b, c, d;
-
-	if ((sscanf(address, "%d.%d.%d.%d", &a, &b, &c, &d)) == EOF);
-		return -1;
-
-	if (CORRECT(a) && CORRECT(b) && CORRECT(c) && CORRECT(d))
-		return 0;
-	else
-		return -1;
-}
-
-Connection conn_connect(char *address, int port) {
-
-	int s, retval;
+Connection conn_connect(char * address, int port) {
+	
+	Connection conn;
+	int retval;
 	struct sockaddr_in destination;
 
 	destination.sin_family = AF_INET;
 	destination.sin_port = htons(port);
 	inet_aton(address, &destination.sin_addr);
-
-	s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (s == -1)
+	
+	conn.id = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (conn.id == -1)
 		fatal_err("Cannot create the connection");
 
-	retval = connect(s, (SA*)&destination, sizeof(destination));
+	retval = connect(conn.id, (SA*)&destination, sizeof(destination));
 	if (retval == -1)
 		fatal_err("Cannot connect to endpoint");
-
-	return s;
+	
+	strcpy(conn.address, address);
+	conn.port = port;
+	printf("Connected to endpoint %s:%d\n", conn.address, conn.port);
+	
+	return conn;
 }
 
 Host acceptHost(Host * server) {
@@ -95,11 +72,11 @@ Host acceptHost(Host * server) {
 	struct sockaddr_in addr;
 	int addr_len = sizeof(addr);
 
-	host.conn = accept(server->conn, (SA*)&addr.sin_addr, (socklen_t*)&addr_len);
+	host.conn = accept(server->conn, (SA*)&addr, (socklen_t*)&addr_len);
 	if (host.conn == -1) {
 		report_err("Cannot accept a connection");
 	} else {
-		host.address = inet_ntoa(addr.sin_addr);
+		strcpy(host.address, inet_ntoa(addr.sin_addr));
 		host.port = ntohs(addr.sin_port);
 		printf("New host connection [%s:%d fd=%d]\n", host.address, host.port, host.conn);
 	}
@@ -149,6 +126,13 @@ int conn_send(Host host, void * data, int dataremaining) {
 	return counter;
 }
 
+/* Return the number of characters received or
+ * Retrun 0 if the connection has been closed or
+ * Return -1 if an error occurs.
+ * The function continue to wait data until the terminator sequence is reached
+ * or the str_len is reached.
+ * The string retrieved hasn't the terminator included.
+ */
 int conn_recvs(Host host, char * string, int str_len, char * terminator) {
 
 	int i, datareceived, ter_len, counter = 0, equal = 1;
@@ -191,6 +175,11 @@ int conn_recvs(Host host, char * string, int str_len, char * terminator) {
 	return counter;
 }
 
+/* Return the number of characters received or
+ * Retrun 0 if the connection has been closed or
+ * Return -1 if an error occurs.
+ * The function continue to wait data until str_len data are received.
+ */
 int conn_recvn(Host host, char * string, int str_len) {
 
 	int datareceived, counter = 0;
@@ -300,7 +289,7 @@ int recvsfromHost(char * string, Host * host, int timeout) {
 		return 0;
 	} else if (bytes != -1) {
 		string[bytes] = '\0';
-		host->address = inet_ntoa(remote.sin_addr);
+		strcpy(host->address, inet_ntoa(remote.sin_addr));
 		host->port = ntohs(remote.sin_port);
 		printf("Datagram received [%dB]\n", bytes);
 	} else {
@@ -319,7 +308,7 @@ Host Host_init(char * address, int port, int protocol) {
 	Host h;
 	char prot[4];
 
-	h.address = address;
+	strcpy(h.address, address);
 	h.port = port;
 
 	switch (protocol) {
@@ -382,7 +371,7 @@ Host prepareServer(int port, int protocol) {
 	addr.sin_port = htons(host.port);
 	addr.sin_addr.s_addr = INADDR_ANY;
 
-	host.address = inet_ntoa(addr.sin_addr);
+	strcpy(host.address, inet_ntoa(addr.sin_addr));
 
 	if (bind(host.conn, (SA*)&addr, sizeof(addr)))
 		fatal_err("Cannot prepare the server");
@@ -393,4 +382,30 @@ Host prepareServer(int port, int protocol) {
 			fatal_err("Cannot listen on specified address");
 
 	return host;
+}
+
+int checkaddress(char * address) {
+	int a, b, c, d;
+
+	if ((sscanf(address, "%d.%d.%d.%d", &a, &b, &c, &d)) == EOF) {
+		fprintf(stderr, "Wrong address format\n");
+		exit(-1);
+	}
+
+	if (CORRECT(a) && CORRECT(b) && CORRECT(c) && CORRECT(d))
+		return 0;
+	else {
+		fprintf(stderr, "Wrong address format\n");
+		exit(-1);
+	}
+}
+
+int checkport(char * port) {
+	int p = atoi(port);
+	
+	if (p < 0 || p > 65536) {
+		fprintf(stderr, "Wrong port specification or format\n");
+		exit(-1);
+	} else
+		return p;
 }
