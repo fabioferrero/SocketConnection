@@ -9,7 +9,8 @@
 
 int main(int argc, char *argv[]) {
 
-	Host local, remote;
+	Connection conn;
+	Host local;
 	int port, bytes, sended_bytes, fd, count;
 	uint32_t file_dim, timestamp;
 	uint32_t file_dim_net, timestamp_net;
@@ -33,12 +34,12 @@ int main(int argc, char *argv[]) {
 
 	while(1) {
 		printf("Waiting a new connection...\n");
-		remote = acceptHost(&local);
-		if (remote.conn == -1) continue;
+		conn = acceptConn(&local);
+		if (conn.id == -1) continue;
 
 		while(1) {
 			printf("\tWaiting file request..\n");
-			bytes = conn_recvs(remote, request, sizeof(request), "\r\n");
+			bytes = conn_recvs(conn, request, sizeof(request), "\r\n");
 			if (bytes <= 0) break;
 
 			sscanf(request, "%s", op);
@@ -54,7 +55,7 @@ int main(int argc, char *argv[]) {
 				fd = open(path, O_RDONLY);
 				if (fd == -1) {
 					report_err("Cannot open the file");
-					bytes = conn_sends(remote, ERROR);
+					bytes = conn_sends(conn, ERROR);
 					continue;
 				}
 
@@ -78,13 +79,13 @@ int main(int argc, char *argv[]) {
 				file_dim_net = htonl(file_dim);
 				timestamp_net = htonl(timestamp);
 
-				bytes = conn_sends(remote, OK);
+				bytes = conn_sends(conn, OK);
 				if (bytes <= 0)
 					break;
-				bytes = conn_send(remote, &file_dim_net, sizeof(file_dim));
+				bytes = conn_send(conn, &file_dim_net, sizeof(file_dim));
 				if (bytes <= 0)
 					break;
-				bytes = conn_send(remote, &timestamp_net, sizeof(timestamp));
+				bytes = conn_send(conn, &timestamp_net, sizeof(timestamp));
 				if (bytes <= 0)
 					break;
 
@@ -95,7 +96,7 @@ int main(int argc, char *argv[]) {
 					if (bytes == -1) {
 						report_err("Cannot read file");
 					}
-					bytes = conn_send(remote, response, file_dim);
+					bytes = conn_send(conn, response, file_dim);
 					if (bytes <= 0)
 						break;
 				} else {
@@ -108,7 +109,7 @@ int main(int argc, char *argv[]) {
 						}
 						sended_bytes += bytes;
 						count++;
-						bytes = conn_send(remote, response, bytes);
+						bytes = conn_send(conn, response, bytes);
 						if (bytes <= 0)
 							break;
 						if ((count % 5) == 0) {
@@ -142,12 +143,12 @@ int main(int argc, char *argv[]) {
 				break;
 			} else {
 				printf("\tINVALID request\n");
-				bytes = conn_sends(remote, ERROR);
+				bytes = conn_sends(conn, ERROR);
 				if (bytes <= 0)
 					break;
 			}
 		}
-		conn_close(remote);
+		conn_close(conn);
 	}
 
 	return 0;
