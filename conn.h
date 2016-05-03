@@ -34,7 +34,7 @@ void report_err(char *message);
 /***** SERVER *****/
 
 Host prepareServer(int port, int protocol);
-Host acceptHost(Host * server);
+Connection acceptConn(Host * server);
 
 /***** CLIENT *****/
 
@@ -42,15 +42,15 @@ Host Host_init(char * address, int port, int protocol);
 
 Connection conn_connect(char * address, int port);
 
-int conn_close(Host host);
+int conn_close(Connection conn);
 
 /***** TCP *****/
 
-int conn_sends(Host host, char * string);
-int conn_send(Host host, void * data, int datalen);
+int conn_sends(Connection conn, char * string);
+int conn_send(Connection conn, void * data, int datalen);
 
-int conn_recvs(Host host, char * string, int str_len, char * terminator);
-int conn_recvn(Host host, char * string, int str_len);
+int conn_recvs(Connection conn, char * string, int str_len, char * terminator);
+int conn_recvn(Connection conn, char * string, int str_len);
 
 /***** UDP *****/
 

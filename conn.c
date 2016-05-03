@@ -65,26 +65,26 @@ Connection conn_connect(char * address, int port) {
 	return conn;
 }
 
-Host acceptHost(Host * server) {
+Connection acceptConn(Host * server) {
 
-	Host host;
+	Connection conn;
 
 	struct sockaddr_in addr;
 	int addr_len = sizeof(addr);
 
-	host.conn = accept(server->conn, (SA*)&addr, (socklen_t*)&addr_len);
-	if (host.conn == -1) {
+	conn.id = accept(server->conn, (SA*)&addr, (socklen_t*)&addr_len);
+	if (conn.id == -1) {
 		report_err("Cannot accept a connection");
 	} else {
-		strcpy(host.address, inet_ntoa(addr.sin_addr));
-		host.port = ntohs(addr.sin_port);
-		printf("New host connection [%s:%d fd=%d]\n", host.address, host.port, host.conn);
+		strcpy(conn.address, inet_ntoa(addr.sin_addr));
+		conn.port = ntohs(addr.sin_port);
+		printf("New connection from %s:%d [fd=%d]\n", conn.address, conn.port, conn.id);
 	}
 
-	return host;
+	return conn;
 }
 
-int conn_sends(Host host, char * string) {
+int conn_sends(Connection conn, char * string) {
 
 	int datasended, dataremaining, counter = 0;
 	char *ptr = string;
@@ -92,7 +92,7 @@ int conn_sends(Host host, char * string) {
 	dataremaining = strlen(string);
 
 	while (dataremaining != 0) {
-		datasended = send(host.conn, ptr, dataremaining, 0);
+		datasended = send(conn.id, ptr, dataremaining, 0);
 		if (datasended <= 0) { //error
 			report_err("Cannot send string");
 			break;
@@ -106,13 +106,13 @@ int conn_sends(Host host, char * string) {
 	return counter;
 }
 
-int conn_send(Host host, void * data, int dataremaining) {
+int conn_send(Connection conn, void * data, int dataremaining) {
 
 	int datasended, counter = 0;
 	void *ptr = data;
 
 	while (dataremaining != 0) {
-		datasended = send(host.conn, ptr, dataremaining, 0);
+		datasended = send(conn.id, ptr, dataremaining, 0);
 		if (datasended <= 0) { //error
 			report_err("Cannot send data");
 			break;
@@ -133,7 +133,7 @@ int conn_send(Host host, void * data, int dataremaining) {
  * or the str_len is reached.
  * The string retrieved hasn't the terminator included.
  */
-int conn_recvs(Host host, char * string, int str_len, char * terminator) {
+int conn_recvs(Connection conn, char * string, int str_len, char * terminator) {
 
 	int i, datareceived, ter_len, counter = 0, equal = 1;
 	char * ptr = string;
@@ -144,7 +144,7 @@ int conn_recvs(Host host, char * string, int str_len, char * terminator) {
 		string[i]='0';
 
 	while (str_len > 0) {
-		datareceived = recv(host.conn, ptr, str_len, 0);
+		datareceived = recv(conn.id, ptr, str_len, 0);
 		if (datareceived == 0) {
 			printf("Connection closed by party\n");
 			string[counter] = '\0';
@@ -180,13 +180,13 @@ int conn_recvs(Host host, char * string, int str_len, char * terminator) {
  * Return -1 if an error occurs.
  * The function continue to wait data until str_len data are received.
  */
-int conn_recvn(Host host, char * string, int str_len) {
+int conn_recvn(Connection conn, char * string, int str_len) {
 
 	int datareceived, counter = 0;
 	char * ptr = string;
 
 	while (str_len > 0) {
-		datareceived = recv(host.conn, ptr, str_len, 0);
+		datareceived = recv(conn.id, ptr, str_len, 0);
 		if (datareceived == 0) {
 			printf("Connection closed by party\n");
 			string[counter] = '\0';
@@ -207,8 +207,8 @@ int conn_recvn(Host host, char * string, int str_len) {
 	return counter;
 }
 
-int conn_close(Host host) {
-	if (close(host.conn)) {
+int conn_close(Connection conn) {
+	if (close(conn.id)) {
 		report_err("Cannot close the connection");
 		return -1;
 	}
@@ -375,7 +375,7 @@ Host prepareServer(int port, int protocol) {
 
 	if (bind(host.conn, (SA*)&addr, sizeof(addr)))
 		fatal_err("Cannot prepare the server");
-	printf("Server prepared [address %s:%d]\n",host.address, host.port);
+	printf("Server prepared [address %s:%d]\n", host.address, host.port);
 
 	if (protocol == TCP)
 		if (listen(host.conn, QUEUE_SIZE))
