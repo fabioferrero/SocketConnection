@@ -5,6 +5,7 @@
 #define TOKEN 65536 // 64K
 //#define TOKEN 131072 // 128K
 //#define TOKEN 262144 // 256K
+#define MAX_FILENAME 51
 
 int main(int argc, char *argv[]) {
 
@@ -16,8 +17,8 @@ int main(int argc, char *argv[]) {
 
 	time_t start_send, end_send;
 
-	char request[51], op[10], *response;
-	char filename[51], path[51] = "files/";
+	char request[MAX_FILENAME+10], op[10], *response;
+	char filename[MAX_FILENAME], path[MAX_FILENAME+6] = "files/";
 
 	struct stat file_info;
 
@@ -137,7 +138,7 @@ int main(int argc, char *argv[]) {
 
 			} else if (strcmp(op, "QUIT") == 0) {
 				printf("\tQUIT request\n");
-				conn_close(remote);
+				//conn_close(remote);
 				break;
 			} else {
 				printf("\tINVALID request\n");
