@@ -64,5 +64,6 @@ int recvfromHost(void * data, Host * host, int timeout);
 
 int checkaddress(char * address);
 int checkport(char * port);
+int readline(char * string, int str_len);
 
 

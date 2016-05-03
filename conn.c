@@ -60,7 +60,7 @@ Connection conn_connect(char * address, int port) {
 	
 	strcpy(conn.address, address);
 	conn.port = port;
-	printf("Connected to endpoint %s:%d\n", conn.address, conn.port);
+	printf("Connected to %s:%d\n", conn.address, conn.port);
 	
 	return conn;
 }
@@ -408,4 +408,18 @@ int checkport(char * port) {
 		exit(-1);
 	} else
 		return p;
+}
+
+int readline(char * string, int str_len) {
+	char * nl;
+	
+	fgets(string, str_len, stdin);
+	
+	nl = strchr(string, '\n');
+	
+	if (nl != 0)
+    	*nl = '\0';
+    else while(getchar() != '\n'){}
+    
+	return nl-string; //lenght until \n
 }
