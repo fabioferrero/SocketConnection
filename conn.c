@@ -106,7 +106,7 @@ int conn_sends(Connection conn, char * string) {
 	return counter;
 }
 
-int conn_send(Connection conn, void * data, int dataremaining) {
+int conn_sendn(Connection conn, void * data, int dataremaining) {
 
 	int datasended, counter = 0;
 	void *ptr = data;
@@ -132,6 +132,10 @@ int conn_send(Connection conn, void * data, int dataremaining) {
  * The function continue to wait data until the terminator sequence is reached
  * or the str_len is reached.
  * The string retrieved hasn't the terminator included.
+ */
+/* TODO change the number of character used in order to read char-by-char
+ * TODO add the possibility to have the terminator = NULL
+ * TODO add the timeout
  */
 int conn_recvs(Connection conn, char * string, int str_len, char * terminator) {
 
@@ -169,8 +173,7 @@ int conn_recvs(Connection conn, char * string, int str_len, char * terminator) {
 		str_len -= datareceived;
 	}
 
-	counter -= ter_len;
-	string[counter] = '\0';
+	string[counter-ter_len] = '\0';
 
 	return counter;
 }
@@ -180,29 +183,28 @@ int conn_recvs(Connection conn, char * string, int str_len, char * terminator) {
  * Return -1 if an error occurs.
  * The function continue to wait data until str_len data are received.
  */
-int conn_recvn(Connection conn, char * string, int str_len) {
+/*
+ * TODO add the timeout
+ */
+int conn_recvn(Connection conn, void * data, int dataremaining) {
 
 	int datareceived, counter = 0;
-	char * ptr = string;
+	void * ptr = data;
 
-	while (str_len > 0) {
-		datareceived = recv(conn.id, ptr, str_len, 0);
+	while (dataremaining > 0) {
+		datareceived = recv(conn.id, ptr, dataremaining, 0);
 		if (datareceived == 0) {
 			printf("Connection closed by party\n");
-			string[counter] = '\0';
 			return 0;
 		}
 		if (datareceived == -1) {
 			report_err("Cannot receive data");
-			string[counter] = '\0';
 			return -1;
 		}
 		counter += datareceived;
 		ptr += datareceived;
-		str_len -= datareceived;
+		dataremaining -= datareceived;
 	}
-
-	string[counter] = '\0';
 
 	return counter;
 }
