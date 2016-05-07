@@ -12,6 +12,10 @@
 
 #define TCP 0
 #define UDP 1
+#define TOKEN 65536
+#define DATAGRAM_LEN 1024
+#define OK "+OK\r\n"
+#define ERROR "-ERR\r\n"
 
 typedef struct connection {
 	char address[16];

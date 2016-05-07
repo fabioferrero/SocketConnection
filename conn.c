@@ -24,7 +24,6 @@
 */
 
 #define SA struct sockaddr
-#define DATAGRAM_LEN 1024
 #define QUEUE_SIZE 10
 #define CORRECT(x) (x >= 0 && x < 256)
 

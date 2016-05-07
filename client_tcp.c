@@ -4,9 +4,6 @@
 
 #include "conn.h"
 
-#define OK "+OK\r\n"
-#define ERROR "-ERR\r\n"
-#define TOKEN 65536
 #define MAX_FILENAME 51
 
 int main(int argc, char *argv[]) {
@@ -14,7 +11,7 @@ int main(int argc, char *argv[]) {
 	Connection conn;
 	char filename[MAX_FILENAME], * request, * file;
 	char header[6];
-	int str_len, bytes, fd;
+	int str_len = 0, bytes = 0, fd, datareceived = 0, last_pack;
 	
 	uint32_t file_dim = 0, timestamp = 0;
 	uint32_t file_dim_net = 0, timestamp_net = 0;
@@ -47,14 +44,13 @@ int main(int argc, char *argv[]) {
 		sprintf(request, "GET %s\r\n", filename);
 		
 		conn_sends(conn, request);
-
-		bytes = conn_recvn(conn, header, 1);
+		conn_recvn(conn, header, 1);
 		
 		if (*header == '+') {
-			bytes = conn_recvs(conn, header+1, 4, "\r\n");
+			conn_recvs(conn, header+1, 4, "\r\n");
 		
-			bytes = conn_recvn(conn, &file_dim_net, sizeof(file_dim));
-			bytes = conn_recvn(conn, &timestamp_net, sizeof(timestamp));
+			conn_recvn(conn, &file_dim_net, sizeof(file_dim));
+			conn_recvn(conn, &timestamp_net, sizeof(timestamp));
 			
 			file_dim = ntohl(file_dim_net);
 			timestamp = ntohl(timestamp_net);
@@ -62,14 +58,50 @@ int main(int argc, char *argv[]) {
 			printf("Received file dim: %u B\n", file_dim);
 			printf("Received timestamp: %u\n", timestamp);
 			
-			fd = open(filename, O_RDWR);
+			fd = open(filename, O_RDWR | O_CREAT);
 			if (fd == -1) {
 				report_err("Cannot open the file");
 				break;
 			}
 			
+			/* TODO the write() below this line have to be replaced with writen() */
 			
-			
+			if (file_dim < TOKEN) {
+				file = malloc(file_dim*sizeof(*file));
+				if (file == NULL) {
+					report_err("Cannot allocate memory for file");
+					continue;
+				}
+				conn_recvn(conn, file, file_dim);
+				bytes = write(fd, file, file_dim);
+				if (bytes != file_dim) {
+					report_err("Cannot write all the file");
+					break;
+				}
+			} else {
+				file = malloc((TOKEN)*sizeof(*file));
+				if (file == NULL) {
+					report_err("Cannot allocate memory for file");
+					continue;
+				}
+				last_pack = file_dim % TOKEN;
+				while(datareceived != file_dim - last_pack) {
+					bytes = conn_recvn(conn, file, TOKEN);
+					write(fd, file, bytes);
+					datareceived += bytes;
+					if (bytes <= 0) {
+						report_err("Cannot write the file");
+						break;
+					}
+				}
+				conn_recvn(conn, file, last_pack);
+				write(fd, file, last_pack);
+				if (bytes <= 0) {
+					report_err("Cannot write the file");
+					break;
+				}
+			}	
+			printf("All file received: %s [%dB]\n", filename, file_dim);
 		} else if (*header == '-') {
 			bytes = conn_recvs(conn, header+1, 5, "\r\n");
 			printf("Server response: [%s]\nTerminate.\n", header);
@@ -80,8 +112,9 @@ int main(int argc, char *argv[]) {
 			free(request);
 			return -1;
 		}
-		
 		free(request);
+		free(file);
+		close(fd);
 	}
 
 	return 0;

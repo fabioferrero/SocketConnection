@@ -69,12 +69,6 @@ int main(int argc, char *argv[]) {
 
 				printf("SELECTED FILE: %s [%d B]\nLast mod: %s", filename, file_dim, ctime(&file_info.st_mtime));
 
-				response = malloc((TOKEN)*sizeof(*response));
-				if (response == NULL) {
-					report_err("Cannot allocate memory for response");
-					continue;
-				}
-
 				/* Send the header */
 				file_dim_net = htonl(file_dim);
 				timestamp_net = htonl(timestamp);
@@ -92,6 +86,11 @@ int main(int argc, char *argv[]) {
 				/* Send the file */
 				time(&start_send);
 				if (file_dim <= TOKEN) {
+					response = malloc(file_dim*sizeof(*response));
+					if (response == NULL) {
+						report_err("Cannot allocate memory for response");
+						continue;
+					}
 					bytes = read(fd, response, file_dim);
 					if (bytes == -1) {
 						report_err("Cannot read file");
@@ -100,6 +99,11 @@ int main(int argc, char *argv[]) {
 					if (bytes <= 0)
 						break;
 				} else {
+					response = malloc((TOKEN)*sizeof(*response));
+					if (response == NULL) {
+						report_err("Cannot allocate memory for response");
+						continue;
+					}
 					sended_bytes = 0;
 					count = 0;
 					while (sended_bytes != file_dim) {
@@ -107,11 +111,11 @@ int main(int argc, char *argv[]) {
 						if (bytes == -1) {
 							report_err("Cannot read file");
 						}
-						sended_bytes += bytes;
-						count++;
 						bytes = conn_sendn(conn, response, bytes);
 						if (bytes <= 0)
 							break;
+						sended_bytes += bytes;
+						count++;
 						if ((count % 5) == 0) {
 							percent = (float) sended_bytes / (float) file_dim * 100;
 							printf("\rSending... [%.0f %%]", percent);
