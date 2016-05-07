@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
 				if (fd == -1) {
 					report_err("Cannot open the file");
 					bytes = conn_sends(conn, ERROR);
-					continue;
+					break;
 				}
 
 				if (fstat(fd, &file_info)) {
@@ -82,10 +82,10 @@ int main(int argc, char *argv[]) {
 				bytes = conn_sends(conn, OK);
 				if (bytes <= 0)
 					break;
-				bytes = conn_send(conn, &file_dim_net, sizeof(file_dim));
+				bytes = conn_sendn(conn, &file_dim_net, sizeof(file_dim));
 				if (bytes <= 0)
 					break;
-				bytes = conn_send(conn, &timestamp_net, sizeof(timestamp));
+				bytes = conn_sendn(conn, &timestamp_net, sizeof(timestamp));
 				if (bytes <= 0)
 					break;
 
@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
 					if (bytes == -1) {
 						report_err("Cannot read file");
 					}
-					bytes = conn_send(conn, response, file_dim);
+					bytes = conn_sendn(conn, response, file_dim);
 					if (bytes <= 0)
 						break;
 				} else {
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
 						}
 						sended_bytes += bytes;
 						count++;
-						bytes = conn_send(conn, response, bytes);
+						bytes = conn_sendn(conn, response, bytes);
 						if (bytes <= 0)
 							break;
 						if ((count % 5) == 0) {
