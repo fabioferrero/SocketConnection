@@ -1,5 +1,8 @@
 client
+client_tcp
 client_tcp.o
 conn.o
 server
+server_tcp
 server_tcp.o
+files
