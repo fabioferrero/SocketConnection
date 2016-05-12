@@ -85,19 +85,17 @@ int main(int argc, char *argv[]) {
 					continue;
 				}
 				last_pack = file_dim % TOKEN;
-				printf("last_pack = %d\n", last_pack);
+				
 				while(datareceived != file_dim - last_pack) {
-					printf("waiting %d\n", TOKEN);
 					bytes = conn_recvn(conn, file, TOKEN);
 					writen(fd, file, bytes);
 					datareceived += bytes;
-					printf("received = %d [tot:%d]\n", bytes, datareceived);
 				}
-				printf("waiting %d\n", last_pack);
+				
 				bytes = conn_recvn(conn, file, last_pack);
 				writen(fd, file, bytes);
 				datareceived += bytes;
-				printf("received = %d [tot:%d]\n", bytes, datareceived);
+				
 				if (datareceived != file_dim) {
 					fprintf(stderr, "Cannot write all the file\n");
 					break;

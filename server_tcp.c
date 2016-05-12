@@ -26,7 +26,7 @@ void serveConn(Connection conn) {
 		if (strcmp(op, "GET") == 0) {
 			strcpy(filename, request+4);
 
-			printf("\tGET request for file: %s\n", filename);
+			//printf("\tGET request for file: %s\n", filename);
 
 			strcpy(path, "files/");
 			strcat(path, filename);
@@ -46,7 +46,8 @@ void serveConn(Connection conn) {
 			file_dim = file_info.st_size;
 			timestamp = file_info.st_mtime;
 
-			printf("SELECTED FILE: %s [%d B]\nLast mod: %s", filename, file_dim, ctime(&file_info.st_mtime));
+			//printf("\tSELECTED FILE: %s\n\t\tFile size: [%d B]\n\t\tLast mod: %s", filename, file_dim, ctime(&file_info.st_mtime));
+			printf("\tSELECTED FILE: %s\n\t\tFile size:\t[%d B]\n\t\tTimestamp:\t[%d]\n", filename, file_dim, timestamp);
 
 			/* Send the header */
 			file_dim_net = htonl(file_dim);
@@ -97,10 +98,10 @@ void serveConn(Connection conn) {
 					count++;
 					if ((count % 5) == 0) {
 						percent = (float) sended_bytes / (float) file_dim * 100;
-						printf("\rSending... [%.0f %%]", percent);
+						printf("\r\t\tSending... [%.0f %%]", percent);
 					}
 				}
-				printf("\r[100 %%] ");
+				printf("\r\t\t[100 %%] ");
 			}
 			time(&end_send);
 

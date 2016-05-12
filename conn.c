@@ -300,6 +300,7 @@ int recvsfromHost(char * string, Host * host, int timeout) {
 	return bytes;
 }
 
+/* TODO implementation */
 int recvfromHost(void * data, Host * host, int timeout) {
 	return 0;
 }

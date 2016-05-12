@@ -31,9 +31,6 @@ typedef struct host	{
 	int conn;
 } Host;
 
-void fatal_err(char *message);
-void report_err(char *message);
-
 /***** SERVER *****/
 
 Host prepareServer(int port, int protocol);
@@ -42,9 +39,7 @@ Connection acceptConn(Host * server);
 /***** CLIENT *****/
 
 Host Host_init(char * address, int port, int protocol);
-
 Connection conn_connect(char * address, int port);
-
 int conn_close(Connection conn);
 
 /***** TCP *****/
@@ -65,6 +60,8 @@ int recvfromHost(void * data, Host * host, int timeout);
 
 /** UTILITIES **/
 
+void fatal_err(char *message);
+void report_err(char *message);
 int checkaddress(char * address);
 int checkport(char * port);
 int readline(char * string, int str_len);
