@@ -64,7 +64,7 @@ int main(int argc, char *argv[]) {
 				break;
 			}
 			
-			/* TODO the write() below this line have to be replaced with writen() */
+			datareceived = 0;
 			
 			if (file_dim < TOKEN) {
 				file = malloc(file_dim*sizeof(*file));
@@ -72,10 +72,10 @@ int main(int argc, char *argv[]) {
 					report_err("Cannot allocate memory for file");
 					continue;
 				}
-				conn_recvn(conn, file, file_dim);
-				bytes = write(fd, file, file_dim);
+				bytes = conn_recvn(conn, file, file_dim);
+				bytes = writen(fd, file, bytes);
 				if (bytes != file_dim) {
-					report_err("Cannot write all the file");
+					fprintf(stderr, "Cannot write all the file\n");
 					break;
 				}
 			} else {
@@ -85,19 +85,21 @@ int main(int argc, char *argv[]) {
 					continue;
 				}
 				last_pack = file_dim % TOKEN;
+				printf("last_pack = %d\n", last_pack);
 				while(datareceived != file_dim - last_pack) {
+					printf("waiting %d\n", TOKEN);
 					bytes = conn_recvn(conn, file, TOKEN);
-					write(fd, file, bytes);
+					writen(fd, file, bytes);
 					datareceived += bytes;
-					if (bytes <= 0) {
-						report_err("Cannot write the file");
-						break;
-					}
+					printf("received = %d [tot:%d]\n", bytes, datareceived);
 				}
-				conn_recvn(conn, file, last_pack);
-				write(fd, file, last_pack);
-				if (bytes <= 0) {
-					report_err("Cannot write the file");
+				printf("waiting %d\n", last_pack);
+				bytes = conn_recvn(conn, file, last_pack);
+				writen(fd, file, bytes);
+				datareceived += bytes;
+				printf("received = %d [tot:%d]\n", bytes, datareceived);
+				if (datareceived != file_dim) {
+					fprintf(stderr, "Cannot write all the file\n");
 					break;
 				}
 			}	

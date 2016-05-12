@@ -424,3 +424,49 @@ int readline(char * string, int str_len) {
     
 	return nl-string; //lenght until \n
 }
+
+int writen(int fd, void * buffer, int dataremaining) {
+	
+	int bytes, datawritten = 0;
+	void * ptr = buffer;
+	
+	while (dataremaining > 0) {
+		bytes = write(fd, ptr, dataremaining);
+		if (bytes == -1) {
+			report_err("Cannot write on file");
+			return -1;
+		}
+		datawritten += bytes;
+		dataremaining -= bytes;
+		ptr += bytes;
+	}
+	if (dataremaining != 0) {
+		fprintf(stderr, "Some error occurs while writing the file\n");
+		return datawritten;
+	}
+	return datawritten;
+}
+
+int readn(int fd, void * buffer, int dataremaining) {
+	
+	int bytes, dataread = 0;
+	void * ptr = buffer;
+	
+	while (dataremaining > 0) {
+		bytes = read(fd, ptr, dataremaining);
+		if (bytes == -1) {
+			report_err("Cannot read the file");
+			return -1;
+		} else if (bytes == 0) break;
+		else {
+			dataread += bytes;
+			dataremaining -= bytes;
+			ptr += bytes;
+		}
+	}
+	if (dataremaining != 0) {
+		fprintf(stderr, "Some error occurs while reading the file\n");
+		return dataread;
+	}
+	return dataread;
+}
