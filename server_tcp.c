@@ -2,6 +2,7 @@
 
 #define MAX_FILENAME 51
 
+/* Serve the connection */
 void serveConn(Connection conn) {
 
 	int bytes, sended_bytes, fd, count;
@@ -153,9 +154,15 @@ int main(int argc, char *argv[]) {
 		conn = acceptConn(&local);
 		if (conn.id == -1) continue;
 		
-		serveConn(conn);
-		
-		conn_close(conn);
+		if (!fork()) {
+			/* Serve the new connection, than terminate */
+			serveConn(conn);
+			conn_close(conn);
+			return 0;
+		} else {
+			/* Main process, keep going listen */
+			conn_close(conn);
+		}
 	}
 
 	return 0;
