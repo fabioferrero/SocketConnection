@@ -1,4 +1,6 @@
 #include "conn.h"
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #define MAX_FILENAME 51
 
@@ -136,13 +138,23 @@ void serveConn(Connection conn) {
 
 int main(int argc, char *argv[]) {
 
+	int maxServerProcesses = 2;
+
 	Connection conn;
 	Host local;
-	int port;
+	int port, count = 0;
 
-	if (argc != 2) {
-		fprintf(stderr, "syntax: %s <port>\n", argv[0]);
-		exit(-1);
+	if (argc != 3) {
+		if (argc != 2) {
+			fprintf(stderr, "syntax: %s <port> [nproc]\n", argv[0]);
+			exit(-1);
+		}
+	} else {
+		port = atoi(argv[2]);
+		if (port <= 0)
+			fprintf(stderr, "Wrong number of processes: set default [%d].\n", maxServerProcesses);
+		else
+			maxServerProcesses = port;
 	}
 
 	port = atoi(argv[1]);
@@ -150,18 +162,24 @@ int main(int argc, char *argv[]) {
 	local = prepareServer(port, TCP);
 
 	while(1) {
-		printf("Waiting a new connection...\n");
-		conn = acceptConn(&local);
-		if (conn.id == -1) continue;
-		
-		if (!fork()) {
-			/* Serve the new connection, than terminate */
-			serveConn(conn);
-			conn_close(conn);
-			return 0;
+		if (count < maxServerProcesses) {
+			count++;
+			printf("Waiting a new connection...\n");
+			conn = acceptConn(&local);
+			if (conn.id == -1) continue;
+	
+			if (!fork()) {
+				/* Serve the new connection, than terminate */
+				serveConn(conn);
+				conn_close(conn);
+				return 0;
+			} else {
+				/* Main process, keep going listen */
+				conn_close(conn);
+			}
 		} else {
-			/* Main process, keep going listen */
-			conn_close(conn);
+			wait(NULL);
+			count--;
 		}
 	}
 
