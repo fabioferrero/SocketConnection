@@ -6,3 +6,6 @@ server
 server_tcp
 server_tcp.o
 files
+types.c
+types.h
+types.o
