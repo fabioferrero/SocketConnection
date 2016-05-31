@@ -19,4 +19,4 @@ types.c : types.xdr
 	rpcgen -c -o types.c types.xdr
 
 clean :
-	rm server client server_tcp.o client_tcp.o conn.o
+	rm server client server_tcp.o client_tcp.o conn.o types.o

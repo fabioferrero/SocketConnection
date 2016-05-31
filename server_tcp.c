@@ -143,22 +143,36 @@ int main(int argc, char *argv[]) {
 
 	Connection conn;
 	Host local;
-	int port, count = 0;
-
-	if (argc != 3) {
-		if (argc != 2) {
-			fprintf(stderr, "syntax: %s <port> [nproc]\n", argv[0]);
+	int port, userNproc, numberOfArgs, count = 0;
+	
+	/* Flag for XDR */
+	int XDRenabled = 0;
+	
+	numberOfArgs = argc;
+	
+	if (!strcmp(argv[1], "-x")) {
+		XDRenabled = 1;
+		printf("-- XDR coding ENABLED --\n");
+		numberOfArgs--;
+	}
+	
+	if (numberOfArgs != 3) {
+		if (numberOfArgs != 2) {
+			fprintf(stderr, "syntax: %s [-x] <port> [nproc]\n", argv[0]);
 			exit(-1);
+		} else {
+			/* Make sure that the port is the last arguments */
+			numberOfArgs++; 
 		}
 	} else {
-		port = atoi(argv[2]);
-		if (port <= 0)
+		userNproc = atoi(argv[numberOfArgs]);
+		if (userNproc <= 0)
 			fprintf(stderr, "Wrong number of processes: set default [%d].\n", maxServerProcesses);
 		else
-			maxServerProcesses = port;
+			maxServerProcesses = userNproc;
 	}
 
-	port = atoi(argv[1]);
+	port = checkport(argv[numberOfArgs-1]);
 
 	local = prepareServer(port, TCP);
 
@@ -170,6 +184,8 @@ int main(int argc, char *argv[]) {
 			if (conn.id == -1) continue;
 	
 			if (!fork()) {
+				/* Close the passive connection *//* TODO implement in library */
+				close(local.conn);
 				/* Serve the new connection, than terminate */
 				serveConn(conn);
 				conn_close(conn);
