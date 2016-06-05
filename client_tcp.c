@@ -2,16 +2,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "types.h"
 #include "conn.h"
 
 #define MAX_FILENAME 51
+#define BUFSIZE 4096
 
 int main(int argc, char *argv[]) {
 
 	Connection conn;
-	char filename[MAX_FILENAME], * request, * file;
+	char filename[MAX_FILENAME], * request, * file_data;
 	char header[6];
 	int str_len = 0, bytes = 0, fd, datareceived = 0, last_pack;
+	
+	/* Flag for XDR */
+	int XDRenabled = 0;
+	
+	XDR xdrsIn, xdrsOut;
+	char send_buf[BUFSIZE], recv_buf[BUFSIZE];
+	file * file_xdr;
+	message * msg;
 	
 	uint32_t file_dim = 0, timestamp = 0;
 	uint32_t file_dim_net = 0, timestamp_net = 0;
@@ -24,6 +34,10 @@ int main(int argc, char *argv[]) {
 	checkaddress(argv[1]);
 
 	conn = conn_connect(argv[1], checkport(argv[2]));
+	
+	xdrmem_create(&xdrsOut, send_buf, BUFSIZE, XDR_ENCODE);
+	xdrmem_create(&xdrsIn, recv_buf, BUFSIZE, XDR_DECODE);
+	msg = malloc(sizeof(*msg));
 
 	printf("Insert filename or <quit> to close the connection\n");
 
@@ -33,7 +47,20 @@ int main(int argc, char *argv[]) {
 
 		if (!strcmp(filename, "QUIT") || !strcmp(filename, "quit")) {
 			printf("Terminating connection with server...\n");
-			conn_sends(conn, "QUIT\r\n");
+			
+			if (XDRenabled) {
+				
+				msg->tag = QUIT;
+				// Write the msg on the buffer
+				if (!xdr_message(&xdrsOut, msg))
+					printf("XDR error\n");
+				// Send the message to the server
+				conn_sendn(conn, send_buf, sizeof(message));
+				printf("XDR sended\n");
+				
+			} else 
+				conn_sends(conn, "QUIT\r\n");
+			
 			conn_close(conn);
 			break;
 		}
@@ -43,7 +70,12 @@ int main(int argc, char *argv[]) {
 
 		sprintf(request, "GET %s\r\n", filename);
 		
-		conn_sends(conn, request);
+		if (XDRenabled) {
+				
+					
+				
+			} else 
+				conn_sends(conn, request);
 		conn_recvn(conn, header, 1);
 		
 		if (*header == '+') {
@@ -67,33 +99,33 @@ int main(int argc, char *argv[]) {
 			datareceived = 0;
 			
 			if (file_dim < TOKEN) {
-				file = malloc(file_dim*sizeof(*file));
-				if (file == NULL) {
+				file_data = malloc(file_dim*sizeof(*file_data));
+				if (file_data == NULL) {
 					report_err("Cannot allocate memory for file");
 					continue;
 				}
-				bytes = conn_recvn(conn, file, file_dim);
-				bytes = writen(fd, file, bytes);
+				bytes = conn_recvn(conn, file_data, file_dim);
+				bytes = writen(fd, file_data, bytes);
 				if (bytes != file_dim) {
 					fprintf(stderr, "Cannot write all the file\n");
 					break;
 				}
 			} else {
-				file = malloc((TOKEN)*sizeof(*file));
-				if (file == NULL) {
+				file_data = malloc((TOKEN)*sizeof(*file_data));
+				if (file_data == NULL) {
 					report_err("Cannot allocate memory for file");
 					continue;
 				}
 				last_pack = file_dim % TOKEN;
 				
 				while(datareceived != file_dim - last_pack) {
-					bytes = conn_recvn(conn, file, TOKEN);
-					writen(fd, file, bytes);
+					bytes = conn_recvn(conn, file_data, TOKEN);
+					writen(fd, file_data, bytes);
 					datareceived += bytes;
 				}
 				
-				bytes = conn_recvn(conn, file, last_pack);
-				writen(fd, file, bytes);
+				bytes = conn_recvn(conn, file_data, last_pack);
+				writen(fd, file_data, bytes);
 				datareceived += bytes;
 				
 				if (datareceived != file_dim) {
@@ -113,7 +145,7 @@ int main(int argc, char *argv[]) {
 			return -1;
 		}
 		free(request);
-		free(file);
+		free(file_data);
 		close(fd);
 	}
 
