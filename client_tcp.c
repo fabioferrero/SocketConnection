@@ -8,6 +8,14 @@
 #define MAX_FILENAME 51
 #define BUFSIZE 4096
 
+void requestFilesXDR() {
+
+}
+
+void requestFiles() {
+
+}
+
 int main(int argc, char *argv[]) {
 
 	Connection conn;
@@ -26,15 +34,23 @@ int main(int argc, char *argv[]) {
 	uint32_t file_dim = 0, timestamp = 0;
 	uint32_t file_dim_net = 0, timestamp_net = 0;
 
-	if (argc != 3) {
-		fprintf(stderr, "syntax: %s <address> <port>\n", argv[0]);
-		exit(-1);
+	int numberOfArgs = argc;
+
+	if (!strcmp(argv[1], "-x")) {
+		XDRenabled = 1;
+		printf("-- XDR coding ENABLED --\n");
+		numberOfArgs--;
 	}
-
-	checkaddress(argv[1]);
-
-	conn = conn_connect(argv[1], checkport(argv[2]));
 	
+	if (numberOfArgs != 3) {
+		fprintf(stderr, "syntax: %s [-x] <address> <port>\n", argv[0]);
+		exit(-1);
+	} 
+	
+	checkaddress(argv[numberOfArgs-2]);
+	conn = conn_connect(argv[numberOfArgs-2], checkport(argv[numberOfArgs-1]));
+	
+	/* Associate xdrs with buffers */
 	xdrmem_create(&xdrsOut, send_buf, BUFSIZE, XDR_ENCODE);
 	xdrmem_create(&xdrsIn, recv_buf, BUFSIZE, XDR_DECODE);
 	msg = malloc(sizeof(*msg));
@@ -49,7 +65,6 @@ int main(int argc, char *argv[]) {
 			printf("Terminating connection with server...\n");
 			
 			if (XDRenabled) {
-				
 				msg->tag = QUIT;
 				// Write the msg on the buffer
 				if (!xdr_message(&xdrsOut, msg))
@@ -57,13 +72,13 @@ int main(int argc, char *argv[]) {
 				// Send the message to the server
 				conn_sendn(conn, send_buf, sizeof(message));
 				printf("XDR sended\n");
-				
 			} else 
 				conn_sends(conn, "QUIT\r\n");
 			
 			conn_close(conn);
 			break;
 		}
+		
 		printf("\trequested file: %s\n", filename);
 
 		request = malloc((str_len+6)*sizeof(*request));
@@ -71,11 +86,14 @@ int main(int argc, char *argv[]) {
 		sprintf(request, "GET %s\r\n", filename);
 		
 		if (XDRenabled) {
+			msg->tag = GET;
+			msg->filename = malloc(strlen()*sizeof(char))
+			if (!xdr_message(&xdrsOut, msg))
+				printf("XDR error\n");		
 				
-					
-				
-			} else 
-				conn_sends(conn, request);
+		} else 
+			conn_sends(conn, request);
+			
 		conn_recvn(conn, header, 1);
 		
 		if (*header == '+') {
