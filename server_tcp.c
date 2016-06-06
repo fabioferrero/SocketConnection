@@ -4,15 +4,14 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#define MAX_FILENAME 51
+#define MAX_FILENAME 500
 #define BUFSIZE 4096
 
 /* Serve the connection with XDR */
 void serveConnXDR(Connection conn) {
 
 	int bytes, sended_bytes, fd, count;
-	uint32_t file_dim, timestamp;
-	uint32_t file_dim_net, timestamp_net;
+	int file_dim, timestamp;
 	float percent, seconds, bytes_per_sec;
 
 	time_t start_send, end_send;
@@ -41,7 +40,7 @@ void serveConnXDR(Connection conn) {
 		
 		switch (msg->tag) {
 			case GET:
-				strcpy(filename, request+4);
+				strcpy(filename, msg->message_u.filename);
 
 				strcpy(path, "files/");
 				strcat(path, filename);
@@ -49,7 +48,9 @@ void serveConnXDR(Connection conn) {
 				fd = open(path, O_RDONLY);
 				if (fd == -1) {
 					report_err("Cannot open the file");
-					bytes = conn_sends(conn, ERROR);
+					msg->tag = ERR;
+					xdr_message(&xdrsOut, msg);
+					conn_sendn(conn, send_buf, sizeof(message));
 					break;
 				}
 
@@ -64,32 +65,24 @@ void serveConnXDR(Connection conn) {
 				printf("\tSELECTED FILE: %s\n\t\tFile size:\t[%d B]\n\t\tTimestamp:\t[%d]\n", filename, file_dim, timestamp);
 
 				// Send the header
-				file_dim_net = htonl(file_dim);
-				timestamp_net = htonl(timestamp);
-
-				bytes = conn_sends(conn, OK);
-				if (bytes <= 0)
-					break;
-				bytes = conn_sendn(conn, &file_dim_net, sizeof(file_dim));
-				if (bytes <= 0)
-					break;
-				bytes = conn_sendn(conn, &timestamp_net, sizeof(timestamp));
-				if (bytes <= 0)
-					break;
+				msg->tag = OK;
+				msg->message_u.fdata.contents.contents_len = file_dim;
+				msg->message_u.fdata.last_mod_time = timestamp;
 
 				// Send the file
 				time(&start_send);
-				if (file_dim <= TOKEN) {
-					response = malloc(file_dim*sizeof(*response));
-					if (response == NULL) {
+				//if (file_dim <= TOKEN) {
+				if (1) {
+					msg->message_u.fdata.contents.contents_val = malloc(file_dim*sizeof(char));
+					if (msg->message_u.fdata.contents.contents_val == NULL) {
 						report_err("Cannot allocate memory for response");
 						continue;
 					}
-					bytes = read(fd, response, file_dim);
-					if (bytes == -1) {
-						report_err("Cannot read file");
-					}
-					bytes = conn_sendn(conn, response, file_dim);
+					readn(fd, msg->message_u.fdata.contents.contents_val, file_dim);
+					
+					xdr_message(&xdrsOut, msg);
+					
+					bytes = conn_sendn(conn, send_buf, sizeof(message));
 					if (bytes <= 0)
 						break;
 				} else {
@@ -133,7 +126,6 @@ void serveConnXDR(Connection conn) {
 				else
 					printf("File sended.\n");
 
-				free(response);
 				break;
 			
 			case QUIT:
@@ -142,9 +134,9 @@ void serveConnXDR(Connection conn) {
 			
 			default: 
 				printf("\tINVALID request\n");
-				bytes = conn_sends(conn, ERROR);
-				if (bytes <= 0)
-					break;
+				msg->tag = ERR;
+				xdr_message(&xdrsOut, msg);
+				conn_sendn(conn, send_buf, sizeof(message));
 				break;
 		}
 	}
@@ -296,19 +288,15 @@ int main(int argc, char *argv[]) {
 	if (!strcmp(argv[1], "-x")) {
 		XDRenabled = 1;
 		printf("-- XDR coding ENABLED --\n");
-		numberOfArgs--;
 	}
 	
-	if (numberOfArgs != 3) {
-		if (numberOfArgs != 2) {
-			fprintf(stderr, "syntax: %s [-x] <port> [nproc]\n", argv[0]);
+	if (numberOfArgs != 3 + XDRenabled) {
+		if (numberOfArgs != 2 + XDRenabled) {
+			fprintf(stderr, "syntax: %s [-x] [nproc] <port>\n", argv[0]);
 			exit(-1);
-		} else {
-			/* Make sure that the port is the last arguments */
-			numberOfArgs++; 
 		}
 	} else {
-		userNproc = atoi(argv[numberOfArgs]);
+		userNproc = atoi(argv[numberOfArgs-2]);
 		if (userNproc <= 0)
 			fprintf(stderr, "Wrong number of processes: set default [%d].\n", maxServerProcesses);
 		else
