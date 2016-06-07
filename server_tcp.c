@@ -1,8 +1,15 @@
 #include "conn.h"
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 #define MAX_FILENAME 51
+
+/* Number of active processes */
+int activeProc = 0;
+
+pthread_mutex_t mutex;
+pthread_cond_t cond;
 
 /* Serve the connection */
 void serveConn(Connection conn) {
@@ -18,7 +25,7 @@ void serveConn(Connection conn) {
 	char filename[MAX_FILENAME], path[MAX_FILENAME+6] = "files/";
 
 	struct stat file_info;
-	
+
 	while(1) {
 		printf("\tWaiting file request..\n");
 		bytes = conn_recvs(conn, request, sizeof(request), "\r\n");
@@ -137,13 +144,26 @@ void serveConn(Connection conn) {
 	}
 }
 
+void manageChild(int sig) {
+
+	if (sig == SIGCHLD) {
+		/* One of the children is died, but can be that more than one are died */
+		pthread_mutex_lock(&mutex);
+		while (waitpid(-1, NULL, WNOHANG) > 0) {
+			activeProc--;
+		}
+		pthread_cond_signal(&cond);
+		pthread_mutex_unlock(&mutex);
+	}
+}
+
 int main(int argc, char *argv[]) {
 
 	int maxServerProcesses = 2;
 
 	Connection conn;
 	Host local;
-	int port, count = 0;
+	int port;
 
 	if (argc != 3) {
 		if (argc != 2) {
@@ -158,31 +178,40 @@ int main(int argc, char *argv[]) {
 			maxServerProcesses = port;
 	}
 
+	pthread_mutex_init(&mutex, NULL);
+	pthread_cond_init(&cond, NULL);
+
+	signal(SIGCHLD, manageChild);
+
 	port = atoi(argv[1]);
 
 	local = prepareServer(port, TCP);
 
 	while(1) {
-		if (count < maxServerProcesses) {
-			count++;
-			printf("Waiting a new connection...\n");
-			conn = acceptConn(&local);
-			if (conn.id == -1) continue;
 	
-			if (!fork()) {
-				/* Serve the new connection, than terminate */
-				serveConn(conn);
-				conn_close(conn);
-				return 0;
-			} else {
-				/* Main process, keep going listen */
-				conn_close(conn);
-			}
+		pthread_mutex_lock(&mutex);
+		while (activeProc == maxServerProcesses) {
+			pthread_cond_wait(&cond, &mutex);
+		}
+		activeProc++;
+		pthread_mutex_unlock(&mutex);
+		
+		printf("Waiting a new connection...\n");
+		conn = acceptConn(&local);
+		if (conn.id == -1) continue;
+
+		if (!fork()) {
+			/* Child process close the server connection */
+			closeServer(local);
+			/* Serve the new connection, than terminate */
+			serveConn(conn);
+			conn_close(conn);
+			return 0;
 		} else {
-			wait(NULL);
-			count--;
+			/* Main process, keep going listen */
+			conn_close(conn);
 		}
 	}
-
+	
 	return 0;
 }

@@ -34,6 +34,7 @@ typedef struct host	{
 /***** SERVER *****/
 
 Host prepareServer(int port, int protocol);
+int closeServer(Host server);
 Connection acceptConn(Host * server);
 
 /***** CLIENT *****/

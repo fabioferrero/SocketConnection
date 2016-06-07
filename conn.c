@@ -83,6 +83,14 @@ Connection acceptConn(Host * server) {
 	return conn;
 }
 
+int closeServer(Host server) {
+	if (close(server.conn)) {
+		report_err("Cannot close the connection");
+		return -1;
+	}
+	return 0;
+}
+
 int conn_sends(Connection conn, char * string) {
 
 	int datasended, dataremaining, counter = 0;
@@ -204,6 +212,8 @@ int conn_recvn(Connection conn, void * data, int dataremaining) {
 		ptr += datareceived;
 		dataremaining -= datareceived;
 	}
+	if (dataremaining != 0)
+		fprintf(stderr, "Some error occurs while receiving data.\n");
 
 	return counter;
 }
@@ -253,7 +263,8 @@ int sendstoHost(char * string, Host * host) {
 	return bytes;
 }
 
-int sendtoHost(void * data, Host * host) {
+/* TODO implementation */
+int sendntoHost(void * data, Host * host) {
 	return 0;
 }
 
@@ -301,7 +312,7 @@ int recvsfromHost(char * string, Host * host, int timeout) {
 }
 
 /* TODO implementation */
-int recvfromHost(void * data, Host * host, int timeout) {
+int recvnfromHost(void * data, Host * host, int datalen, int timeout) {
 	return 0;
 }
 

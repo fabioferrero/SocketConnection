@@ -2,7 +2,7 @@ server_objects = server_tcp.o conn.o
 client_objects = client_tcp.o conn.o
 
 server : $(server_objects)
-	gcc -o server $(server_objects)
+	gcc -o server $(server_objects) -lpthread
 	
 client : $(client_objects)
 	gcc -o client $(client_objects);

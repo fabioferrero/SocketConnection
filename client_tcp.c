@@ -44,7 +44,7 @@ int main(int argc, char *argv[]) {
 		sprintf(request, "GET %s\r\n", filename);
 		
 		conn_sends(conn, request);
-		conn_recvn(conn, header, 1);
+		if (conn_recvn(conn, header, 1) <= 0) break;
 		
 		if (*header == '+') {
 			conn_recvs(conn, header+1, 4, "\r\n");
