@@ -1,23 +1,28 @@
+/*	conn.h 
+	written by Fabio Ferrero
+*/
 #include <stdio.h> 		
-#include <stdlib.h>		// exit()
-#include <unistd.h>		// close()
+#include <stdlib.h>		// exit();
+
+#include <unistd.h>		// close();
 #include <time.h>
-#include <errno.h>
+#include <errno.h>		// errno
 #include <string.h>
-#include <sys/stat.h>
-#include <fcntl.h>		//open()
-#include <stdint.h>
+#include <fcntl.h>		// open();
+#include <stdint.h>		// uint32_t
+
+#include <sys/stat.h>	// files info
+#include <sys/types.h>
+
+#include <sys/wait.h>	// wait();
+#include <signal.h>		// signal();
 
 #include <netinet/in.h> // Address conversion
 
 #define TCP 0
 #define UDP 1
 #define DATAGRAM_LEN 1024
-#define OK "+OK\r\n"
-#define ERROR "-ERR\r\n"
-#define TOKEN 65536 	// 64K
-//#define TOKEN 131072 	// 128K
-//#define TOKEN 262144 	// 256K
+#define TOKEN 65536
 
 typedef struct connection {
 	char address[16];
@@ -30,6 +35,8 @@ typedef struct host	{
 	int port;
 	int conn;
 } Host;
+
+/* NOTE: all funciton return: 0 for SUCCESS and -1 for ERROR */
 
 /***** SERVER *****/
 
@@ -47,9 +54,13 @@ int conn_close(Connection conn);
 
 int conn_sends(Connection conn, char * string);
 int conn_sendn(Connection conn, void * data, int datalen);
+int conn_sendfile(Connection conn, int fd, int file_size);
+int conn_sendfile_tokenized(Connection conn, int fd, int file_size, int tokenlen);
 
 int conn_recvs(Connection conn, char * string, int str_len, char * terminator);
 int conn_recvn(Connection conn, void * data, int datalen);
+int conn_recvfile(Connection conn, int fd, int file_size);
+int conn_recvfile_tokenized(Connection conn, int fd, int file_size, int tokenlen);
 
 /***** UDP *****/
 
@@ -69,4 +80,5 @@ int readline(char * string, int str_len);
 int writen(int fd, void * buffer, int nbyte);
 int readn(int fd, void * buffer, int nbyte);
 
+/* TODO DNS resolve */
 

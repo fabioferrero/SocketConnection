@@ -1,3 +1,6 @@
+/*	conn.c 
+	written by Fabio Ferrero
+*/
 #include "conn.h"
 
 #include <sys/socket.h>
@@ -25,12 +28,13 @@
 
 #define SA struct sockaddr
 #define QUEUE_SIZE 10
+
 #define CORRECT(x) (x >= 0 && x < 256)
 
 void fatal_err(char *message) {
 	fprintf(stderr, "%s - (Error %d)\n", message, errno);
 	perror("");
-	exit(1);
+	exit(-1);
 }
 
 void report_err(char *message) {
@@ -133,6 +137,63 @@ int conn_sendn(Connection conn, void * data, int dataremaining) {
 	return counter;
 }
 
+int conn_sendfile(Connection conn, int fd, int file_size) {
+	
+	int bytes;
+	char * data;
+	
+	data = malloc(file_size*sizeof(char));
+	if (data == NULL) {
+		report_err("Cannot allocate memory for data");
+		return -1;
+	}
+	bytes = readn(fd, data, file_size);
+	if (bytes == -1) {
+		report_err("Cannot read file");
+	}
+	return conn_sendn(conn, data, file_size);
+}
+
+int conn_sendfile_tokenized(Connection conn, int fd, int file_size, int tokenlen) {
+	
+	int sended_bytes = 0, count = 0;
+	int bytes;
+	float percent;
+	char * token;
+	
+	token = malloc(tokenlen*sizeof(char));
+	if (token == NULL) {
+		report_err("Cannot allocate memory for token");
+		return -1;
+	}
+	
+	while (sended_bytes < file_size) {
+		bytes = read(fd, token, tokenlen);
+		if (bytes == -1) {
+			report_err("Cannot read file");
+			return -1;
+		}
+		bytes = conn_sendn(conn, token, bytes);
+		if (bytes <= 0)
+			return -1;
+		sended_bytes += bytes;
+		count++;
+		if ((count % 5) == 0) {
+			percent = (float) sended_bytes / (float) file_size * 100;
+			printf("\r\tSending... [%.0f %%]", percent);
+		}
+	}
+	free(token);
+	
+	if (sended_bytes != file_size) {
+		fprintf(stderr, "Some error occurs while sending the file.\n");
+	} else { 
+		printf("\r\tAll file sended. [100 %%]    \n");
+	}
+	
+	return sended_bytes;
+}
+
 /* Return the number of characters received or
  * Retrun 0 if the connection has been closed or
  * Return -1 if an error occurs.
@@ -216,6 +277,16 @@ int conn_recvn(Connection conn, void * data, int dataremaining) {
 		fprintf(stderr, "Some error occurs while receiving data.\n");
 
 	return counter;
+}
+
+/* TODO implementation */
+int conn_recvfile(Connection conn, int fd, int file_size) {
+	return -1;
+}
+
+/* TODO implementation */
+int conn_recvfile_tokenized(Connection conn, int fd, int file_size, int tokenlen) {
+	return -1;
 }
 
 int conn_close(Connection conn) {
@@ -340,7 +411,7 @@ Host Host_init(char * address, int port, int protocol) {
 	if (h.conn == -1)
 		fatal_err("Cannot create the connection");
 	else {
-		printf("Connection set [fd=%d:%s]\n", h.conn, prot);
+		printf("Host init [fd=%d:%s]\n", h.conn, prot);
 	}
 
 	return h;
@@ -352,11 +423,6 @@ Host prepareServer(int port, int protocol) {
 	char prot[4];
 
 	struct sockaddr_in addr;
-
-	if (port < 1 || port > 65536) {
-		fprintf(stderr, "Invalid port number: valid range [1 - 65536]\n");
-		exit(-1);
-	}
 
 	host.port = port;
 

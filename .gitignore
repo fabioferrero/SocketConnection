@@ -6,3 +6,4 @@ server
 server_tcp
 server_tcp.o
 files
+*.txt
