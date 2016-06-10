@@ -46,8 +46,7 @@ void report_err(char *message) {
 	return;
 }
 
-/***** SERVER *****/
-
+/* Returns an host used to acceptConn() on TCP or recvfromHost() on UDP */
 Host prepareServer(int port, int protocol) {
 
 	Host host;
@@ -60,16 +59,14 @@ Host prepareServer(int port, int protocol) {
 		exit(-1);
 	}
 
-	host.port = port;
-
 	switch (protocol) {
 		case TCP:
-			host.conn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			host.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 			strcpy(prot, "TCP");
 			break;
 
 		case UDP:
-			host.conn = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			host.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 			strcpy(prot, "UDP");
 			break;
 
@@ -77,31 +74,35 @@ Host prepareServer(int port, int protocol) {
 			fprintf(stderr, "Invalid protocol\n");
 			exit(-1);
 	}
-	if (host.conn == -1)
-		fatal_err("Cannot set the connection");
-	else
+	if (host.sock == -1)
+		fatal_err("Cannot set the server socket");
+	else if (protocol == TCP)
 		printf("Connection set on %s\n", prot);
 
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(host.port);
+	addr.sin_port = htons(port);
 	addr.sin_addr.s_addr = INADDR_ANY;
-
-	strcpy(host.address, inet_ntoa(addr.sin_addr));
-
-	if (bind(host.conn, (SA*)&addr, sizeof(addr)))
+	
+	if (protocol == TCP) {
+		host.port = port;
+		strcpy(host.address, inet_ntoa(addr.sin_addr));
+	}
+	if (bind(host.sock, (SA*)&addr, sizeof(addr)))
 		fatal_err("Cannot prepare the server");
-	printf("Server prepared [address %s:%d]\n", host.address, host.port);
 
-	if (protocol == TCP)
-		if (listen(host.conn, QUEUE_SIZE))
+	if (protocol == TCP) {
+		printf("Server prepared [address %s:%d]\n", host.address, host.port);
+		if (listen(host.sock, QUEUE_SIZE))
 			fatal_err("Cannot listen on specified address");
-			
+	} else 
+		printf("Enabled UDP on port %d.\n", port);
+	
 	return host;
 }
 
-int closeServer(Host server) {
-	if (close(server.conn)) {
-		report_err("Cannot close the connection");
+int closeHost(Host host) {
+	if (close(host.sock)) {
+		report_err("Cannot close the socket");
 		return -1;
 	}
 	return 0;
@@ -114,7 +115,7 @@ Connection acceptConn(Host server) {
 	struct sockaddr_in addr;
 	int addr_len = sizeof(addr);
 
-	conn.id = accept(server.conn, (SA*)&addr, (socklen_t*)&addr_len);
+	conn.id = accept(server.sock, (SA*)&addr, (socklen_t*)&addr_len);
 	if (conn.id == -1) {
 		report_err("Cannot accept a connection");
 	} else {
@@ -126,15 +127,12 @@ Connection acceptConn(Host server) {
 	return conn;
 }
 
-/***** CLIENT *****/
-
-/* Used on UDP when I want to initialize the endpoint of my communication */
-Host Host_init(char * address, int port, int protocol) {
+Host Host_init(char * address, int port) {
 
 	Host h;
-	char prot[4];
 
-	if (checkaddress(address)) exit(-1);
+	if (checkaddress(address)) 
+		exit(-1);
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
 		exit(-1);
@@ -142,25 +140,10 @@ Host Host_init(char * address, int port, int protocol) {
 	
 	strcpy(h.address, address);
 	h.port = port;
-
-	switch (protocol) {
-		case TCP:
-			h.conn = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-			strcpy(prot, "TCP");
-			break;
-		case UDP:
-			h.conn = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-			strcpy(prot, "UDP");
-			break;
-		default:
-			fprintf(stderr, "Invalid protocol\n");
-			h.conn = -1;
-	}
-	if (h.conn == -1)
-		fatal_err("Cannot create the connection");
-	else {
-		printf("Host init for %s\n", prot);
-	}
+		
+	h.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (h.sock == -1)
+		fatal_err("Cannot set the host socket");
 
 	return h;
 }
@@ -203,8 +186,6 @@ int conn_close(Connection conn) {
 	}
 	return 0;
 }
-
-/***** TCP *****/
 
 int conn_sends(Connection conn, char * string) {
 
@@ -275,7 +256,7 @@ int conn_sendfile(Connection conn, int fd, int file_size) {
 		return -1;
 	}
 	
-	printf("All file received: [%dB]\n", file_size);
+	printf("All file sended. [%d B]\n", file_size);
 	return 0;
 }
 
@@ -432,7 +413,7 @@ int conn_recvfile(Connection conn, int fd, int file_size) {
 		return -1;
 	}
 	
-	printf("All file received: [%dB]\n", file_size);
+	printf("All file received. [%d B]\n", file_size);
 	return 0;
 }
 
@@ -479,7 +460,7 @@ int conn_recvfile_tokenized(Connection conn, int fd, int file_size, int tokenlen
 		fprintf(stderr, "Some error occurs while receiving file.\n");
 		return -1;
 	} else {
-		printf("All file received: [%dB]\n", file_size);
+		printf("All file received. [%d B]\n", file_size);
 		return 0;
 	}
 }
@@ -505,19 +486,11 @@ int conn_setTimeout(Connection conn, int timeout) {
 	return 0;
 }
 
-/***** UDP *****/
-
 int sendstoHost(char * string, Host host) {
 
 	int bytes, str_len;
 
 	struct sockaddr_in destination;
-
-	if (host.conn <= 0 || !checkport(itoa(host.port)) || !checkaddress(host.address)) { 
-		// Host not initialized
-		fprintf(stderr, "Host not initialized\n");
-		return -1;
-	}
 
 	destination.sin_family = AF_INET;
 	destination.sin_port = htons(host.port);
@@ -525,8 +498,7 @@ int sendstoHost(char * string, Host host) {
 
 	str_len = strlen(string);
 
-	bytes = sendto(host.conn, string, str_len, 0, (SA*) &destination, (socklen_t)sizeof(destination));
-
+	bytes = sendto(host.sock, string, str_len, 0, (SA*) &destination, (socklen_t)sizeof(destination));
 	if (bytes == -1) {
 		report_err("Cannot send datagram");
 		return -1;
@@ -535,59 +507,95 @@ int sendstoHost(char * string, Host host) {
 		fprintf(stderr, "Error sending datagram [%dB/%dB]\n", bytes, str_len);
 		return -1;
 	}
-	
-	printf("Datagram sended [%dB/%dB]\n", bytes, str_len);
 
 	return 0;
 }
 
-/* TODO implementation */
-int sendntoHost(void * data, int datalen, Host * host) {
-	return -1;
+int sendntoHost(void * data, int datalen, Host host) {
+
+	int bytes;
+
+	struct sockaddr_in destination;
+
+	destination.sin_family = AF_INET;
+	destination.sin_port = htons(host.port);
+	inet_aton(host.address, &destination.sin_addr);
+
+	bytes = sendto(host.sock, data, datalen, 0, (SA*) &destination, (socklen_t)sizeof(destination));
+	if (bytes == -1) {
+		report_err("Cannot send datagram");
+		return -1;
+	}
+	if (bytes != datalen) {
+		fprintf(stderr, "Error sending datagram [%dB/%dB]\n", bytes, datalen);
+		return -1;
+	}
+
+	return 0;
 }
 
-int recvsfromHost(char * string, Host * host, int timeout) {
+int recvsfromHost(char * string, int str_len, Host * host, int timeout) {
 
 	int remote_len, bytes;
 
 	struct timeval tv;
 	struct sockaddr_in remote;
 
-	if (host->conn <= 0 || !checkport(itoa(host->port)) || !checkaddress(host->address)) { 
-		// Host not initialized
-		fprintf(stderr, "Host not initialized\n");
-		return -1;
-	}
-
 	if (timeout >= 0) {
 		tv.tv_sec = timeout;
 		tv.tv_usec = 0;
-		setsockopt(host->conn, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+		setsockopt(host->sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 	}
 
 	remote_len = sizeof(remote);
 
-	bytes = recvfrom(host->conn, string, DATAGRAM_LEN, 0, (SA*) &remote, (socklen_t*)&remote_len);
-
-	if (timeout && TIMEOUT_EXPIRED) {
+	bytes = recvfrom(host->sock, string, str_len, 0, (SA*) &remote, (socklen_t*)&remote_len);
+	if (timeout && (errno == EAGAIN || errno == EWOULDBLOCK)) {
 		fprintf(stderr, "Timeout expired [%d sec]\n", timeout);
 		return -1;
 	}
 	if (bytes == -1) {
 		report_err("Cannot receive datagram");
+		return -1;
 	}
 	
 	string[bytes] = '\0';
+	
 	strcpy(host->address, inet_ntoa(remote.sin_addr));
 	host->port = ntohs(remote.sin_port);
-	printf("Datagram received [%dB]\n", bytes);
 
-	return bytes;
+	return 0;
 }
 
-/* TODO implementation */
 int recvnfromHost(void * data, int datalen, Host * host, int timeout) {
-	return -1;
+	
+	int remote_len, bytes;
+
+	struct timeval tv;
+	struct sockaddr_in remote;
+
+	if (timeout >= 0) {
+		tv.tv_sec = timeout;
+		tv.tv_usec = 0;
+		setsockopt(host->sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	}
+
+	remote_len = sizeof(remote);
+
+	bytes = recvfrom(host->sock, data, datalen, 0, (SA*) &remote, (socklen_t*)&remote_len);
+	if (timeout && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+		fprintf(stderr, "Timeout expired [%d sec]\n", timeout);
+		return -1;
+	}
+	if (bytes == -1) {
+		report_err("Cannot receive datagram");
+		return -1;
+	}
+	
+	strcpy(host->address, inet_ntoa(remote.sin_addr));
+	host->port = ntohs(remote.sin_port);
+
+	return 0;
 }
 
 /** UTILITIES **/
@@ -613,7 +621,7 @@ int checkport(char * port) {
 	
 	if (p < 0 || p > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
-		exit(-1);
+		return -1;
 	} else
 		return p;
 }

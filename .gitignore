@@ -1,9 +1,9 @@
 client
 client_tcp
-client_tcp.o
-conn.o
+client_udp
 server
 server_tcp
-server_tcp.o
+server_udp
 files
+*.o
 *.txt

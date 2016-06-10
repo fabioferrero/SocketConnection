@@ -21,6 +21,6 @@ client_udp : client_udp.o $(common_obj)
 	gcc -o client_udp client_udp.o $(common_obj)
 
 clean :
-	rm server_tcp client_tcp server_tcp.o client_tcp.o \
+	rm -f server_tcp client_tcp server_tcp.o client_tcp.o \
 	server_udp client_udp server_udp.o client_udp.o \
-	conn.o *.txt
+	conn.o *.txt *~

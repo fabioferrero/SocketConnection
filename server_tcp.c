@@ -1,6 +1,7 @@
 #include "conn.h"
 
-#define MAX_FILENAME 51
+#define MAX_FILENAME 100
+#define TOKEN 65536
 
 /* Number of active processes */
 int activeProc = 0;
@@ -125,7 +126,7 @@ int main(int argc, char *argv[]) {
 
 	Connection conn;
 	Host thisServer;
-	int port, servNumber;
+	int port, servNumber, ctrl;
 
 	if (argc != 3) {
 		if (argc != 2) {
@@ -147,8 +148,9 @@ int main(int argc, char *argv[]) {
 	signal(SIGINT, signalHandler);
 
 	port = checkport(argv[1]);
+	if (port == -1) return -1;
 
-	thisServer = prepareServer(port, TCP);
+	thisServer = prepareServer(port, TCP);		// Dies on failure
 
 	while(1) {
 	
@@ -165,7 +167,7 @@ int main(int argc, char *argv[]) {
 
 		if (!fork()) {
 			/* Child process close the server connection */
-			closeServer(thisServer);
+			closeHost(thisServer);
 			/* Serve the new connection, than terminate */
 			serveConn(conn);
 			conn_close(conn);

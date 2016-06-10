@@ -1,6 +1,7 @@
 #include "conn.h"
 
-#define MAX_FILENAME 51
+#define MAX_FILENAME 100
+#define TOKEN 65536
 
 int main(int argc, char *argv[]) {
 

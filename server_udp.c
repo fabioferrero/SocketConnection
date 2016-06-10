@@ -1,37 +1,42 @@
-#include <stdio.h> 		
-#include <stdlib.h>
-#include <string.h>
-
 #include "conn.h"
 
 int main(int argc, char *argv[]) {
 
-	Host local, remote;
+	Host remote;
 	char data[DATAGRAM_LEN];
-	int bytes;
+	int ctrl, port;
 	
 	if (argc != 2) {
 		fprintf(stderr, "syntax: %s <port>\n", argv[0]); 
 		exit(-1);
 	}
 	
-	local = prepareServer(atoi(argv[1]), UDP);
-	printf("Server ready\n");
-		
-	remote.conn = local.conn;
+	port = checkport(argv[1]);
+	if (port == -1) return -1;
+	
+	/* Some possible initialization */
+	remote = prepareServer(port, UDP);
 		
 	while(1) {
-		printf("Waiting for datagram... [Max size: %lu]\n", sizeof(data));
+		printf("Waiting for datagram... [Max size: %dB]\n", DATAGRAM_LEN);
 		
-		bytes = recvsfromHost(data, &remote, 0);
+		/* I want to receive a string from a remote host and I want know
+		   its address and port */
+		ctrl = recvsfromHost(data, DATAGRAM_LEN, &remote, NO_TIMEOUT);
+		if (ctrl == -1) {
+			continue;
+		}
 		
-		if (bytes != -1) {
-			printf("Received [%s] from %s:%d\n", data, remote.address, remote.port);
-			
-			sendstoHost(data, &remote);
-			
+		printf("Received [%s] from %s:%d\n", data, remote.address, remote.port);
+		/* I want to send a string to the same host before */
+		ctrl = sendstoHost(data, remote);
+		if (ctrl == -1) {
+			continue;
 		}
 	}
+	
+	/* Some free function here */
+	ctrl = closeHost(remote);
 	
 	return 0;
 }
