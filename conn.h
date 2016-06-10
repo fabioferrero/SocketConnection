@@ -12,15 +12,19 @@
 #include <stdint.h>		// uint32_t
 
 #include <sys/stat.h>	// files info
-#include <sys/types.h>
+#include <sys/types.h>  // pthread_x_t
 
 #include <sys/wait.h>	// wait();
 #include <signal.h>		// signal();
 
 #include <netinet/in.h> // Address conversion
 
+#define TRUE 1
+#define FALSE 0
+
 #define TCP 0
 #define UDP 1
+
 #define DATAGRAM_LEN 1024
 #define TOKEN 65536
 
@@ -37,12 +41,14 @@ typedef struct host	{
 } Host;
 
 /* NOTE: all funciton return: 0 for SUCCESS and -1 for ERROR */
+void fatal_err(char *message);
+void report_err(char *message);
 
 /***** SERVER *****/
 
 Host prepareServer(int port, int protocol);
 int closeServer(Host server);
-Connection acceptConn(Host * server);
+Connection acceptConn(Host server);
 
 /***** CLIENT *****/
 
@@ -62,18 +68,18 @@ int conn_recvn(Connection conn, void * data, int datalen);
 int conn_recvfile(Connection conn, int fd, int file_size);
 int conn_recvfile_tokenized(Connection conn, int fd, int file_size, int tokenlen);
 
+int conn_setTimeout(Connection conn, int timeout);
+
 /***** UDP *****/
 
 int sendstoHost(char * string, Host * host);
-int sendtoHost(void * data, Host * host);
+int sendntoHost(void * data, int datalen, Host * host);
 
 int recvsfromHost(char * string, Host * host, int timeout);
-int recvfromHost(void * data, Host * host, int timeout);
+int recvnfromHost(void * data, int datalen, Host * host, int timeout);
 
 /** UTILITIES **/
 
-void fatal_err(char *message);
-void report_err(char *message);
 int checkaddress(char * address);
 int checkport(char * port);
 int readline(char * string, int str_len);

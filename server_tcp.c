@@ -22,11 +22,17 @@ void serveConn(Connection conn) {
 	char filename[MAX_FILENAME], path[MAX_FILENAME+6] = "files/";
 
 	struct stat file_info;
+	
+	bytes = conn_setTimeout(conn, 30);
+	if (bytes == -1) {
+		printf("Terminating service.\n");
+		return;
+	}
 
 	while(1) {
 		printf("\tWaiting file request..\n");
 		bytes = conn_recvs(conn, request, sizeof(request), "\r\n");
-		if (bytes <= 0) break;
+		if (bytes == -1) break;
 
 		sscanf(request, "%s", op);
 
@@ -58,13 +64,13 @@ void serveConn(Connection conn) {
 			timestamp_net = htonl(timestamp);
 
 			bytes = conn_sends(conn, "+OK\r\n");
-			if (bytes <= 0)
+			if (bytes == -1)
 				break;
 			bytes = conn_sendn(conn, &file_dim_net, sizeof(file_dim));
-			if (bytes <= 0)
+			if (bytes == -1)
 				break;
 			bytes = conn_sendn(conn, &timestamp_net, sizeof(timestamp));
-			if (bytes <= 0)
+			if (bytes == -1)
 				break;
 
 			/* Send the file */
@@ -85,10 +91,11 @@ void serveConn(Connection conn) {
 		} else {
 			printf("\tINVALID request\n");
 			bytes = conn_sends(conn, "-ERR\r\n");
-			if (bytes <= 0)
+			if (bytes == -1)
 				break;
 		}
 	}
+	printf("Terminating service.\n");
 }
 
 void signalHandler(int sig) {
@@ -105,8 +112,9 @@ void signalHandler(int sig) {
 	if (sig == SIGINT) {
 		pthread_mutex_destroy(&mutex);
 		pthread_cond_destroy(&cond);
-		/* Some free before die */
+		/* Some termination before die */
 		
+		printf("\n");
 		exit(0);
 	}
 }
@@ -116,8 +124,8 @@ int main(int argc, char *argv[]) {
 	int maxServerProcesses = 2;
 
 	Connection conn;
-	Host local;
-	int port;
+	Host thisServer;
+	int port, servNumber;
 
 	if (argc != 3) {
 		if (argc != 2) {
@@ -125,11 +133,11 @@ int main(int argc, char *argv[]) {
 			exit(-1);
 		}
 	} else {
-		port = atoi(argv[2]);
+		servNumber = atoi(argv[2]);
 		if (port <= 0)
 			fprintf(stderr, "Wrong number of processes: set default [%d].\n", maxServerProcesses);
 		else
-			maxServerProcesses = port;
+			maxServerProcesses = servNumber;
 	}
 
 	pthread_mutex_init(&mutex, NULL);
@@ -138,9 +146,9 @@ int main(int argc, char *argv[]) {
 	signal(SIGCHLD, signalHandler);
 	signal(SIGINT, signalHandler);
 
-	port = atoi(argv[1]);
+	port = checkport(argv[1]);
 
-	local = prepareServer(port, TCP);
+	thisServer = prepareServer(port, TCP);
 
 	while(1) {
 	
@@ -152,12 +160,12 @@ int main(int argc, char *argv[]) {
 		pthread_mutex_unlock(&mutex);
 		
 		printf("Waiting a new connection...\n");
-		conn = acceptConn(&local);
+		conn = acceptConn(thisServer);
 		if (conn.id == -1) continue;
 
 		if (!fork()) {
 			/* Child process close the server connection */
-			closeServer(local);
+			closeServer(thisServer);
 			/* Serve the new connection, than terminate */
 			serveConn(conn);
 			conn_close(conn);

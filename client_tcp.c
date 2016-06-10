@@ -40,7 +40,9 @@ int main(int argc, char *argv[]) {
 		sprintf(request, "GET %s\r\n", filename);
 		
 		conn_sends(conn, request);
-		if (conn_recvn(conn, header, 1) <= 0) break;
+		if (conn_recvn(conn, header, 1) == -1) {
+			break;
+		}
 		
 		if (*header == '+') {
 			conn_recvs(conn, header+1, 4, "\r\n");
@@ -68,8 +70,8 @@ int main(int argc, char *argv[]) {
 					report_err("Cannot allocate memory for file");
 					continue;
 				}
-				bytes = conn_recvn(conn, file, file_dim);
-				bytes = writen(fd, file, bytes);
+				conn_recvn(conn, file, file_dim);
+				bytes = writen(fd, file, file_dim);
 				if (bytes != file_dim) {
 					fprintf(stderr, "Cannot write all the file\n");
 					break;
@@ -83,14 +85,14 @@ int main(int argc, char *argv[]) {
 				last_pack = file_dim % TOKEN;
 				
 				while(datareceived != file_dim - last_pack) {
-					bytes = conn_recvn(conn, file, TOKEN);
-					writen(fd, file, bytes);
-					datareceived += bytes;
+					conn_recvn(conn, file, TOKEN);
+					writen(fd, file, TOKEN);
+					datareceived += TOKEN;
 				}
 				
-				bytes = conn_recvn(conn, file, last_pack);
-				writen(fd, file, bytes);
-				datareceived += bytes;
+				conn_recvn(conn, file, last_pack);
+				writen(fd, file, last_pack);
+				datareceived += last_pack;
 				
 				if (datareceived != file_dim) {
 					fprintf(stderr, "Cannot write all the file\n");
