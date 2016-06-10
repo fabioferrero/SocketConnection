@@ -23,7 +23,7 @@ void serveConn(Connection conn) {
 
 	struct stat file_info;
 	
-	bytes = conn_setTimeout(conn, 30);
+	bytes = conn_setTimeout(conn, 120);
 	if (bytes == -1) {
 		printf("Terminating service.\n");
 		return;

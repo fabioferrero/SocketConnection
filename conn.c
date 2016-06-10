@@ -134,7 +134,7 @@ Host Host_init(char * address, int port, int protocol) {
 	Host h;
 	char prot[4];
 
-	checkaddress(address);
+	if (checkaddress(address)) exit(-1);
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
 		exit(-1);
@@ -171,7 +171,7 @@ Connection conn_connect(char * address, int port) {
 	int retval;
 	struct sockaddr_in destination;
 	
-	checkaddress(address);
+	if (checkaddress(address)) exit(-1);
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
 		exit(-1);
@@ -274,6 +274,8 @@ int conn_sendfile(Connection conn, int fd, int file_size) {
 	if (ctrl == -1) {
 		return -1;
 	}
+	
+	printf("All file received: [%dB]\n", file_size);
 	return 0;
 }
 
@@ -292,7 +294,8 @@ int conn_sendfile_tokenized(Connection conn, int fd, int file_size, int tokenlen
 	
 	while (sended_bytes < file_size) {
 		bytes = read(fd, token, tokenlen);
-		if (bytes == 0) break;
+		if (bytes == 0) 
+			break;
 		if (bytes == -1) {
 			report_err("Cannot read the file");
 			free(token);
@@ -313,7 +316,7 @@ int conn_sendfile_tokenized(Connection conn, int fd, int file_size, int tokenlen
 	free(token);
 	
 	if (sended_bytes != file_size) {
-		fprintf(stderr, "Some error occurs while sending the file.\n");
+		fprintf(stderr, "Some error occurs while sending file.\n");
 		return -1;
 	} else { 
 		printf("\r\tAll file sended. [100 %%]    \n");
@@ -408,14 +411,77 @@ int conn_recvn(Connection conn, void * data, int dataremaining) {
 	return 0;
 }
 
-/* TODO implementation */
 int conn_recvfile(Connection conn, int fd, int file_size) {
-	return -1;
+
+	int ctrl;
+	char * data;
+	
+	data = malloc(file_size*sizeof(char));
+	if (data == NULL) {
+		report_err("Cannot allocate memory for data");
+		return -1;
+	}
+	ctrl = conn_recvn(conn, data, file_size);
+	if (ctrl == -1) {
+		free(data);
+		return -1;	
+	}
+	ctrl = writen(fd, data, file_size);
+	free(data);
+	if (ctrl == -1) {
+		return -1;
+	}
+	
+	printf("All file received: [%dB]\n", file_size);
+	return 0;
 }
 
-/* TODO implementation */
 int conn_recvfile_tokenized(Connection conn, int fd, int file_size, int tokenlen) {
-	return -1;
+
+	int ctrl, last_pack, datareceived = 0;
+	char * token;
+
+	token = malloc(tokenlen*sizeof(char));
+	if (token == NULL) {
+		report_err("Cannot allocate memory for token");
+		return -1;
+	}
+	
+	last_pack = file_size % tokenlen;
+	
+	while (datareceived != file_size - last_pack) {
+		ctrl = conn_recvn(conn, token, tokenlen);
+		if (ctrl == -1) {
+			free(token);
+			return -1;
+		}
+		ctrl = writen(fd, token, tokenlen);
+		if (ctrl == -1) {
+			free(token);
+			return -1;
+		}
+		datareceived += tokenlen;
+	}
+	
+	ctrl = conn_recvn(conn, token, last_pack);
+	if (ctrl == -1) {
+		free(token);
+		return -1;
+	}
+	ctrl = writen(fd, token, last_pack);
+	free(token);
+	if (ctrl == -1) 
+		return -1;
+	
+	datareceived += last_pack;
+	
+	if (datareceived != file_size) {
+		fprintf(stderr, "Some error occurs while receiving file.\n");
+		return -1;
+	} else {
+		printf("All file received: [%dB]\n", file_size);
+		return 0;
+	}
 }
 
 int conn_setTimeout(Connection conn, int timeout) {
@@ -531,14 +597,14 @@ int checkaddress(char * address) {
 
 	if ((sscanf(address, "%d.%d.%d.%d", &a, &b, &c, &d)) == EOF) {
 		fprintf(stderr, "Wrong address format\n");
-		exit(-1);
+		return -1;
 	}
 
 	if (CORRECT(a) && CORRECT(b) && CORRECT(c) && CORRECT(d))
 		return 0;
 	else {
 		fprintf(stderr, "Wrong address format\n");
-		exit(-1);
+		return -1;
 	}
 }
 
@@ -561,7 +627,7 @@ int readline(char * string, int str_len) {
 	
 	if (nl != 0)
     	string[nl] = '\0';
-    else {
+    else {	
     	while(getchar() != '\n'){}
     	return str_len;
     }
@@ -570,7 +636,7 @@ int readline(char * string, int str_len) {
 
 int writen(int fd, void * buffer, int dataremaining) {
 	
-	int bytes, datawritten = 0;
+	int bytes;
 	void * ptr = buffer;
 	
 	while (dataremaining > 0) {
@@ -579,20 +645,19 @@ int writen(int fd, void * buffer, int dataremaining) {
 			report_err("Cannot write on file");
 			return -1;
 		}
-		datawritten += bytes;
 		dataremaining -= bytes;
 		ptr += bytes;
 	}
 	if (dataremaining != 0) {
 		fprintf(stderr, "Some error occurs while writing the file\n");
-		return datawritten;
+		return -1;
 	}
-	return datawritten;
+	return 0;
 }
 
 int readn(int fd, void * buffer, int dataremaining) {
 	
-	int bytes, dataread = 0;
+	int bytes;
 	void * ptr = buffer;
 	
 	while (dataremaining > 0) {
@@ -600,16 +665,15 @@ int readn(int fd, void * buffer, int dataremaining) {
 		if (bytes == -1) {
 			report_err("Cannot read the file");
 			return -1;
-		} else if (bytes == 0) break;
-		else {
-			dataread += bytes;
-			dataremaining -= bytes;
-			ptr += bytes;
 		}
+		if (bytes == 0) 
+			break;
+		dataremaining -= bytes;
+		ptr += bytes;
 	}
 	if (dataremaining != 0) {
 		fprintf(stderr, "Some error occurs while reading the file\n");
-		return dataread;
+		return -1;
 	}
-	return dataread;
+	return 0;
 }

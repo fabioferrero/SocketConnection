@@ -7,7 +7,7 @@ int main(int argc, char *argv[]) {
 	Connection conn;
 	char filename[MAX_FILENAME], * request, * file;
 	char header[6];
-	int str_len = 0, bytes = 0, fd, datareceived = 0, last_pack;
+	int str_len = 0, fd;
 	
 	uint32_t file_dim = 0, timestamp = 0;
 	uint32_t file_dim_net = 0, timestamp_net = 0;
@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
 		exit(-1);
 	}
 
-	checkaddress(argv[1]);
+	if (checkaddress(argv[1])) return -1;
 
 	conn = conn_connect(argv[1], checkport(argv[2]));
 
@@ -62,46 +62,15 @@ int main(int argc, char *argv[]) {
 				break;
 			}
 			
-			datareceived = 0;
-			
+			/* Receive the file */
 			if (file_dim < TOKEN) {
-				file = malloc(file_dim*sizeof(*file));
-				if (file == NULL) {
-					report_err("Cannot allocate memory for file");
-					continue;
-				}
-				conn_recvn(conn, file, file_dim);
-				bytes = writen(fd, file, file_dim);
-				if (bytes != file_dim) {
-					fprintf(stderr, "Cannot write all the file\n");
-					break;
-				}
+				conn_recvfile(conn, fd, file_dim);
 			} else {
-				file = malloc((TOKEN)*sizeof(*file));
-				if (file == NULL) {
-					report_err("Cannot allocate memory for file");
-					continue;
-				}
-				last_pack = file_dim % TOKEN;
-				
-				while(datareceived != file_dim - last_pack) {
-					conn_recvn(conn, file, TOKEN);
-					writen(fd, file, TOKEN);
-					datareceived += TOKEN;
-				}
-				
-				conn_recvn(conn, file, last_pack);
-				writen(fd, file, last_pack);
-				datareceived += last_pack;
-				
-				if (datareceived != file_dim) {
-					fprintf(stderr, "Cannot write all the file\n");
-					break;
-				}
+				conn_recvfile_tokenized(conn, fd, file_dim, TOKEN);
 			}	
-			printf("All file received: %s [%dB]\n", filename, file_dim);
+			
 		} else if (*header == '-') {
-			bytes = conn_recvs(conn, header+1, 5, "\r\n");
+			conn_recvs(conn, header+1, 5, "\r\n");
 			printf("Server response: [%s]\nTerminate.\n", header);
 			free(request);
 			return -1;
@@ -111,7 +80,6 @@ int main(int argc, char *argv[]) {
 			return -1;
 		}
 		free(request);
-		free(file);
 		close(fd);
 	}
 

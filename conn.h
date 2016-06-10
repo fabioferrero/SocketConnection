@@ -81,10 +81,11 @@ int recvnfromHost(void * data, int datalen, Host * host, int timeout);
 /** UTILITIES **/
 
 int checkaddress(char * address);
-int checkport(char * port);
-int readline(char * string, int str_len);
+int checkport(char * port);					// Returns the port number
+int readline(char * string, int str_len);	// Returns the string lenght
 int writen(int fd, void * buffer, int nbyte);
 int readn(int fd, void * buffer, int nbyte);
 
+/* TODO Select */
 /* TODO DNS resolve */
 
