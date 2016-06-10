@@ -507,7 +507,7 @@ int conn_setTimeout(Connection conn, int timeout) {
 
 /***** UDP *****/
 
-/*int sendstoHost(char * string, Host host) {
+int sendstoHost(char * string, Host host) {
 
 	int bytes, str_len;
 
@@ -553,11 +553,11 @@ int recvsfromHost(char * string, Host * host, int timeout) {
 	struct timeval tv;
 	struct sockaddr_in remote;
 
-	/*if (host->conn <= 0 || !checkport(itoa(host->port)) || !checkaddress(host->address)) { 
+	if (host->conn <= 0 || !checkport(itoa(host->port)) || !checkaddress(host->address)) { 
 		// Host not initialized
 		fprintf(stderr, "Host not initialized\n");
 		return -1;
-	}*/
+	}
 
 	if (timeout >= 0) {
 		tv.tv_sec = timeout;
