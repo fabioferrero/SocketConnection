@@ -101,34 +101,14 @@ void serveConn(Connection conn) {
 	printf("Terminating service.\n");
 }
 
-void signalHandler(int sig) {
-
-	if (sig == SIGCHLD) {
-		/* One of the children is died, but can be that more than one are died */
-		pthread_mutex_lock(&mutex);
-		while (waitpid(-1, NULL, WNOHANG) > 0) {
-			activeProc--;
-		}
-		pthread_cond_signal(&cond);
-		pthread_mutex_unlock(&mutex);
-	}
-	if (sig == SIGINT) {
-		pthread_mutex_destroy(&mutex);
-		pthread_cond_destroy(&cond);
-		/* Some termination before die */
-		
-		printf("\n");
-		exit(0);
-	}
-}
-
 int main(int argc, char *argv[]) {
 
-	int maxServerProcesses = 2;
+	int serverProcesses = 2;
 
 	Connection conn;
 	Host thisServer;
-	int port, servNumber, ctrl;
+	int port, servNumber, ctrl, i;
+	pid_t * children;
 
 	if (argc != 3) {
 		if (argc != 2) {
@@ -138,47 +118,46 @@ int main(int argc, char *argv[]) {
 	} else {
 		servNumber = atoi(argv[2]);
 		if (servNumber <= 0 || servNumber > MAX_PROC)
-			fprintf(stderr, "Wrong number of processes: set default [%d].\n", maxServerProcesses);
+			fprintf(stderr, "Wrong number of processes: set default [%d].\n", serverProcesses);
 		else
-			maxServerProcesses = servNumber;
+			serverProcesses = servNumber;
 	}
-
-	pthread_mutex_init(&mutex, NULL);
-	pthread_cond_init(&cond, NULL);
-
-	signal(SIGCHLD, signalHandler);
-	signal(SIGINT, signalHandler);
+	
+	children = malloc(serverProcesses * sizeof(pid_t));
+	if (children == NULL) {
+		fprintf(stderr, "Cannot allocate memory fot children");
+		return -1;
+	}
 
 	port = checkport(argv[1]);
 	if (port == -1) return -1;
 
 	thisServer = prepareServer(port, TCP);		// Dies on failure
-
-	while(1) {
 	
-		pthread_mutex_lock(&mutex);
-		while (activeProc == maxServerProcesses) {
-			pthread_cond_wait(&cond, &mutex);
-		}
-		activeProc++;
-		pthread_mutex_unlock(&mutex);
-		
-		printf("Waiting a new connection...\n");
-		conn = acceptConn(thisServer);
-		if (conn.id == -1) continue;
+	for (i = 0; i < servNumber; i++) {
+		children[i] = fork();
+		if (!children[i]) {
+			/* Child */
+			while(1) {
+				printf("Waiting a new connection...\n");
+				conn = acceptConn(thisServer);
+				if (conn.id == -1) continue;
 
-		if (!fork()) {
-			/* Child process close the server connection */
-			closeHost(thisServer);
-			/* Serve the new connection, than terminate */
-			serveConn(conn);
-			conn_close(conn);
-			return 0;
-		} else {
-			/* Main process, keep going listen */
-			conn_close(conn);
+				serveConn(conn);
+				conn_close(conn);
+			}
 		}
 	}
+	
+	pause();
+	
+	/* Came here after a SIGINT */
+	
+	for (i = 0; i < servNumber; i++)
+		if (kill(children[i], SIGKILL))
+			report_err("Cannot terminate a child");
+			
+	printf("Lallallero\n");
 	
 	return 0;
 }
