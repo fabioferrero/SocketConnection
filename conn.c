@@ -8,6 +8,8 @@
 #include <arpa/inet.h>
 #include <netinet/in.h> // Address conversion
 
+#include <netdb.h>		// DNS
+
 /*
  	family: AF_INET	 for IPv4  type: SOCK_STREAM for TCP  protocol: IPPROTO_TCP
  			AF_INET6 for IPv6		 SOCK_DGRAM  for UDP 			IPPROTO_UDP
@@ -36,6 +38,7 @@
 #define TIMEOUT_EXPIRED (TIMEOUT && (errno == EAGAIN || errno == EWOULDBLOCK))
 
 uint32_t TIMEOUT = 0;
+struct hostent * host_info = NULL;
 
 void fatal_err(char *message) {
 	fprintf(stderr, "%s - (Error %d)\n", message, errno);
@@ -687,4 +690,45 @@ int readn(int fd, void * buffer, int dataremaining) {
 		return -1;
 	}
 	return 0;
+}
+
+/* TODO IPv6 support */
+
+char * getAddressByName(char * url) {
+	
+	struct in_addr *ip, **ips;
+	
+	host_info = gethostbyname(url);
+	if (host_info == NULL) {
+		fprintf(stderr, "Cannot resolve the name %s\n", url);
+		return NULL;
+	}
+	/* Use the length as a counter for display the correct address */
+	host_info->h_length = 1;
+	
+	ips = (struct in_addr**)host_info->h_addr_list;
+	ip = ips[0];
+	
+	if (ip == NULL)
+		return NULL;
+		
+	return inet_ntoa(*ip);
+}
+
+char * nextAddress() {
+
+	struct in_addr *ip, **ips;
+	
+	if (host_info == NULL) {
+		fprintf(stderr, "Address not previously specified.\n");
+		return NULL;
+	}
+	
+	ips = (struct in_addr**)host_info->h_addr_list;
+	ip = ips[host_info->h_length++];
+	
+	if (ip == NULL)
+		return NULL;
+
+	return inet_ntoa(*ip);
 }

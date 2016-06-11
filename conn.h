@@ -70,9 +70,6 @@ int conn_recvfile_tokenized(Connection conn, int fd, int file_size, int tokenlen
 
 int conn_setTimeout(Connection conn, int timeout);
 
-/* TODO Select */
-
-
 /***** UDP CLIENT *****/
 Host Host_init(char * address, int port);					// EXIT on failure
 
@@ -93,5 +90,8 @@ int readline(char * string, int str_len);		// Returns the string lenght
 int writen(int fd, void * buffer, int nbyte);
 int readn(int fd, void * buffer, int nbyte);
 
-/* TODO DNS resolve */
+/** DNS resolve **/
+char * getAddressByName(char * url);			// Returns the IP or NULL
+char * nextAddress();							// Returns the IP or NULL
+
 
