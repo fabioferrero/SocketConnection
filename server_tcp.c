@@ -32,7 +32,7 @@ void serveConn(Connection conn) {
 		return;
 	}
 
-	while(1) {
+	while(TRUE) {
 		printf("\tWaiting file request..\n");
 		bytes = conn_recvs(conn, request, sizeof(request), "\r\n");
 		if (bytes == -1) break;
@@ -154,7 +154,7 @@ int main(int argc, char *argv[]) {
 
 	thisServer = prepareServer(port, TCP);		// Dies on failure
 
-	while(1) {
+	while(TRUE) {
 	
 		pthread_mutex_lock(&mutex);
 		while (activeProc == maxServerProcesses) {

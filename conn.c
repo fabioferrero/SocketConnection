@@ -24,6 +24,9 @@
 
  	int   inet_aton(char *str, struct in_addr *addr); RETURN 1 ERROR 0
  	char* inet_ntoa(struct in_addr addr);
+ 	
+ 	// Returns number of ready fds, and sets contains only ready fds, 0 if timeout
+ 	int select(int nfd, fd_set * readfd, fd_set * writefd, fd_set * exceptfd, tv * timeout);
 */
 
 #define SA struct sockaddr

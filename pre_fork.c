@@ -5,11 +5,10 @@
 
 #define MAX_PROC 10
 
-/* Number of active processes */
-int activeProc = 0;
+/* Number of processes to create */
+int serverProcesses = 2;
 
-pthread_mutex_t mutex;
-pthread_cond_t cond;
+pid_t * children;
 
 /* Serve the connection */
 void serveConn(Connection conn) {
@@ -32,7 +31,7 @@ void serveConn(Connection conn) {
 		return;
 	}
 
-	while(1) {
+	while(TRUE) {
 		printf("\tWaiting file request..\n");
 		bytes = conn_recvs(conn, request, sizeof(request), "\r\n");
 		if (bytes == -1) break;
@@ -101,14 +100,30 @@ void serveConn(Connection conn) {
 	printf("Terminating service.\n");
 }
 
-int main(int argc, char *argv[]) {
+void signalHandler(int sig) {
+	
+	int i;
+	
+	if (sig == SIGINT) {
+		/* Some termination before die */
+		
+		for (i = 0; i < serverProcesses; i++)
+			if (kill(children[i], SIGKILL))
+				report_err("Cannot terminate a child");
+				
+		for (i = 0; i < serverProcesses; i++)
+			wait(NULL);
+		
+		printf("\n");
+		exit(0);
+	}
+}
 
-	int serverProcesses = 2;
+int main(int argc, char *argv[]) {
 
 	Connection conn;
 	Host thisServer;
 	int port, servNumber, ctrl, i;
-	pid_t * children;
 
 	if (argc != 3) {
 		if (argc != 2) {
@@ -132,13 +147,13 @@ int main(int argc, char *argv[]) {
 	port = checkport(argv[1]);
 	if (port == -1) return -1;
 
-	thisServer = prepareServer(port, TCP);		// Dies on failure
+	thisServer = prepareServer(port, TCP);
 	
-	for (i = 0; i < servNumber; i++) {
+	for (i = 0; i < serverProcesses; i++) {
 		children[i] = fork();
 		if (!children[i]) {
 			/* Child */
-			while(1) {
+			while(TRUE) {
 				printf("Waiting a new connection...\n");
 				conn = acceptConn(thisServer);
 				if (conn.id == -1) continue;
@@ -146,18 +161,12 @@ int main(int argc, char *argv[]) {
 				serveConn(conn);
 				conn_close(conn);
 			}
+			return 0;
 		}
 	}
 	
+	signal(SIGINT, signalHandler);
 	pause();
-	
-	/* Came here after a SIGINT */
-	
-	for (i = 0; i < servNumber; i++)
-		if (kill(children[i], SIGKILL))
-			report_err("Cannot terminate a child");
-			
-	printf("Lallallero\n");
 	
 	return 0;
 }
