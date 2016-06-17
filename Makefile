@@ -35,4 +35,5 @@ clean :
 	rm -f server_tcp client_tcp server_tcp.o client_tcp.o \
 	server_udp client_udp server_udp.o client_udp.o \
 	server_xdr client_xdr server_xdr.o client_xdr.o \
-	conn.o *.txt *~ *.avi *.pdf
+	pre_fork pre_fork.o conn.o *.txt *~ *.avi *.pdf
+
