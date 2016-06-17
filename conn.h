@@ -28,6 +28,7 @@
 #define DATAGRAM_LEN 1024
 
 #define NO_TIMEOUT 0
+#define TIMEOUT_EXPIRED (errno == EAGAIN || errno == EWOULDBLOCK)
 
 typedef struct connection {
 	char address[16];
