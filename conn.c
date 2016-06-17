@@ -604,6 +604,102 @@ int recvnfromHost(void * data, int datalen, Host * host, int timeout) {
 	return 0;
 }
 
+/***** XDR *****/
+
+int xdr_sendfile(XDR * xdrOut, int fd, int file_size) {
+	
+	unsigned int tokenlen = 4096;
+	int ctrl, sended_bytes = 0, count = 0;
+	int bytes, frequency = (file_size / tokenlen / 3000)+1;
+	float percent;
+	char * token;
+	
+	token = malloc(tokenlen*sizeof(char));
+	if (token == NULL) {
+		report_err("Cannot allocate memory for token");
+		return -1;
+	}
+	
+	while (sended_bytes < file_size) {
+		bytes = read(fd, token, tokenlen);
+		if (bytes == 0) 
+			break;
+		if (bytes == -1) {
+			report_err("Cannot read the file");
+			free(token);
+			return -1;
+		}
+		if (!xdr_bytes(xdrOut, &token, (u_int*) &bytes, ~0)) {
+			free(token);
+			report_err("Cannot send on XDR");
+			return -1;
+		}
+		sended_bytes += bytes;
+		count++;
+		if ((count % frequency) == 0) {
+			percent = (float) sended_bytes / (float) file_size * 100;
+			printf("\r\tSending... [%.0f %%]", percent);
+		}
+	}
+	free(token);
+	
+	if (sended_bytes != file_size) {
+		fprintf(stderr, "Some error occurs while sending file.\n");
+		return -1;
+	} else { 
+		printf("\r\tAll file sended. [100 %%]    \n");
+		return 0;
+	}
+}
+
+int xdr_recvfile(XDR * xdrIn, int fd, int file_size) {
+	
+	unsigned int last_pack, tokenlen = 4096;
+	int ctrl, datareceived = 0;
+	char * token;
+
+	token = malloc(tokenlen*sizeof(char));
+	if (token == NULL) {
+		report_err("Cannot allocate memory for token");
+		return -1;
+	}
+	
+	last_pack = file_size % tokenlen;
+	
+	while (datareceived != file_size - last_pack) {
+		if (!xdr_bytes(xdrIn, &token, (u_int*) &tokenlen, ~0)) {
+			free(token);
+			report_err("Cannot receive on XDR");
+			return -1;
+		}
+		ctrl = writen(fd, token, tokenlen);
+		if (ctrl == -1) {
+			free(token);
+			return -1;
+		}
+		datareceived += tokenlen;
+	}
+	
+	if (!xdr_bytes(xdrIn, &token, (u_int*) &last_pack, ~0)) {
+		free(token);
+		return -1;
+	}
+	ctrl = writen(fd, token, last_pack);
+	free(token);
+	if (ctrl == -1) 
+		return -1;
+	
+	datareceived += last_pack;
+	
+	if (datareceived != file_size) {
+		fprintf(stderr, "Some error occurs while receiving file.\n");
+		return -1;
+	} else {
+		printf("All file received. [%d B]\n", file_size);
+		return 0;
+	}
+}
+
 /** UTILITIES **/
 
 int checkaddress(char * address) {

@@ -18,9 +18,10 @@
 #include <signal.h>		// signal();
 
 #include <netinet/in.h> // Address conversion
+#include <rpc/xdr.h>	// XDR
 
-#define TRUE 1
-#define FALSE 0
+//#define TRUE 1
+//#define FALSE 0
 
 #define TCP 0
 #define UDP 1
@@ -81,6 +82,11 @@ int sendntoHost(void * data, int datalen, Host host);
 
 int recvsfromHost(char * string, int str_len, Host * host, int timeout);
 int recvnfromHost(void * data, int datalen, Host * host, int timeout);
+
+/***** XDR *****/
+
+int xdr_sendfile(XDR * xdrOut, int fd, int file_size);
+int xdr_recvfile(XDR * xdrOut, int fd, int file_size);
 
 /** UTILITIES **/
 
