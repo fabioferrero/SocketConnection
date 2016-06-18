@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
 		/* I want to receive a string from a remote host */
 		/* I want to know the address if i don't have already */
 		ctrl = recvsfromHost(response, MAX_LENGHT, &server, TIME_TO_WAIT);
-		if (ctrl == -1) {
+		if (ctrl == -1 && TIMEOUT_EXPIRED) {
 			printf("Retry [%d on %d]\n", retry+1, MAX_RETRY);
 		} else break;
 	}

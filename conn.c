@@ -550,7 +550,9 @@ int recvsfromHost(char * string, int str_len, Host * host, int timeout) {
 	if (timeout >= 0) {
 		tv.tv_sec = timeout;
 		tv.tv_usec = 0;
-		setsockopt(host->sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+		bytes = setsockopt(host->sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+		if (bytes == -1)
+			report_err("Cannot set the timeout");
 	}
 
 	remote_len = sizeof(remote);
@@ -583,7 +585,9 @@ int recvnfromHost(void * data, int datalen, Host * host, int timeout) {
 	if (timeout >= 0) {
 		tv.tv_sec = timeout;
 		tv.tv_usec = 0;
-		setsockopt(host->sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+		bytes = setsockopt(host->sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+		if (bytes == -1)
+			report_err("Cannot set the timeout");
 	}
 
 	remote_len = sizeof(remote);
