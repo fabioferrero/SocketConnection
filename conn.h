@@ -32,13 +32,13 @@
 #define TIMEOUT_EXPIRED (errno == EAGAIN || errno == EWOULDBLOCK)
 
 typedef struct connection {
-	char address[16];
+	char address[42];
 	int port;
-	int id;
+	int sock;
 } Connection;
 
 typedef struct host	{
-	char address[16];
+	char address[42];
 	int port;
 	int sock;
 } Host;

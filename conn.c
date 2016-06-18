@@ -35,7 +35,7 @@
 #define QUEUE_SIZE 32
 
 #define CORRECT(x) (x >= 0 && x < 256)
-#define TIMEOUT_EXPIRED (TIMEOUT && (errno == EAGAIN || errno == EWOULDBLOCK))
+#define TIMEOUT_EXP (TIMEOUT && (errno == EAGAIN || errno == EWOULDBLOCK))
 
 uint32_t TIMEOUT = 0;
 struct hostent * host_info = NULL;
@@ -58,7 +58,7 @@ Host prepareServer(int port, int protocol) {
 	Host host;
 	char prot[4];
 
-	struct sockaddr_in addr;
+	struct sockaddr_in6 addr;
 	
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
@@ -67,12 +67,12 @@ Host prepareServer(int port, int protocol) {
 
 	switch (protocol) {
 		case TCP:
-			host.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			host.sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
 			strcpy(prot, "TCP");
 			break;
 
 		case UDP:
-			host.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			host.sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 			strcpy(prot, "UDP");
 			break;
 
@@ -83,25 +83,32 @@ Host prepareServer(int port, int protocol) {
 	if (host.sock == -1)
 		fatal_err("Cannot set the server socket");
 	else if (protocol == TCP)
-		printf("Connection set on %s\n", prot);
+		printf("[Connection set on %s]\n", prot);
 
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
-	addr.sin_addr.s_addr = INADDR_ANY;
+	bzero((char *) &addr, sizeof(addr));
+	
+	addr.sin6_flowinfo = 0;
+	addr.sin6_family = AF_INET6;
+	addr.sin6_port = htons(port);
+	addr.sin6_addr = in6addr_any;
 	
 	if (protocol == TCP) {
+		/* On UDP the host structure is used to store the remote host address,
+		   so don't fill that field */
 		host.port = port;
-		strcpy(host.address, inet_ntoa(addr.sin_addr));
+		if (inet_ntop(AF_INET6, &(addr.sin6_addr), host.address, 42) == NULL) {
+			report_err("Wrong address convertion");
+		}
 	}
 	if (bind(host.sock, (SA*)&addr, sizeof(addr)))
 		fatal_err("Cannot prepare the server");
 
 	if (protocol == TCP) {
-		printf("Server prepared [address %s:%d]\n", host.address, host.port);
+		printf("[Server prepared on port %d]\n", host.port);
 		if (listen(host.sock, QUEUE_SIZE))
 			fatal_err("Cannot listen on specified address");
 	} else 
-		printf("Enabled UDP on port %d.\n", port);
+		printf("[Enabled UDP on port %d]\n", port);
 	
 	return host;
 }
@@ -121,13 +128,14 @@ Connection acceptConn(Host server) {
 	struct sockaddr_in addr;
 	int addr_len = sizeof(addr);
 
-	conn.id = accept(server.sock, (SA*)&addr, (socklen_t*)&addr_len);
-	if (conn.id == -1) {
+	conn.sock = accept(server.sock, (SA*)&addr, (socklen_t*)&addr_len);
+	if (conn.sock == -1) {
 		report_err("Cannot accept a connection");
 	} else {
 		strcpy(conn.address, inet_ntoa(addr.sin_addr));
+		//inet_ntop(AF_INET6, &(addr.sin6_addr), conn.address, 42);
 		conn.port = ntohs(addr.sin_port);
-		printf("New connection from %s:%d\n", conn.address, conn.port);
+		printf("[New connection from %s:%d]\n", conn.address, conn.port);
 	}
 
 	return conn;
@@ -170,23 +178,23 @@ Connection conn_connect(char * address, int port) {
 	destination.sin_port = htons(port);
 	inet_aton(address, &destination.sin_addr);
 	
-	conn.id = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (conn.id == -1)
+	conn.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (conn.sock == -1)
 		fatal_err("Cannot create the connection");
 
-	retval = connect(conn.id, (SA*)&destination, sizeof(destination));
+	retval = connect(conn.sock, (SA*)&destination, sizeof(destination));
 	if (retval == -1)
 		fatal_err("Cannot connect to endpoint");
 	
 	strcpy(conn.address, address);
 	conn.port = port;
-	printf("Connected to %s:%d\n", conn.address, conn.port);
+	printf("[Connected to %s:%d]\n", conn.address, conn.port);
 	
 	return conn;
 }
 
 int conn_close(Connection conn) {
-	if (close(conn.id)) {
+	if (close(conn.sock)) {
 		report_err("Cannot close the connection");
 		return -1;
 	}
@@ -201,7 +209,7 @@ int conn_sends(Connection conn, char * string) {
 	dataremaining = strlen(string);
 
 	while (dataremaining > 0) {
-		datasended = send(conn.id, ptr, dataremaining, 0);
+		datasended = send(conn.sock, ptr, dataremaining, 0);
 		if (datasended <= 0) { //error
 			report_err("Cannot send string");
 			return -1;
@@ -224,7 +232,7 @@ int conn_sendn(Connection conn, void * data, int dataremaining) {
 	void *ptr = data;
 
 	while (dataremaining > 0) {
-		datasended = send(conn.id, ptr, dataremaining, 0);
+		datasended = send(conn.sock, ptr, dataremaining, 0);
 		if (datasended <= 0) { //error
 			report_err("Cannot send data");
 			return -1;
@@ -327,8 +335,8 @@ int conn_recvs(Connection conn, char * string, int str_len, char * terminator) {
 
 	while (str_len > 0) {
 		// Receive char by char
-		datareceived = recv(conn.id, ptr, sizeof(char), 0);
-		if (TIMEOUT_EXPIRED) {
+		datareceived = recv(conn.sock, ptr, sizeof(char), 0);
+		if (TIMEOUT_EXP) {
 			fprintf(stderr, "Timeout expired [%d sec]\n", TIMEOUT);
 			return -1;
 		}
@@ -374,8 +382,8 @@ int conn_recvn(Connection conn, void * data, int dataremaining) {
 	void * ptr = data;
 
 	while (dataremaining > 0) {
-		datareceived = recv(conn.id, ptr, dataremaining, 0);
-		if (TIMEOUT_EXPIRED) {
+		datareceived = recv(conn.sock, ptr, dataremaining, 0);
+		if (TIMEOUT_EXP) {
 			fprintf(stderr, "Timeout expired [%d sec]\n", TIMEOUT);
 			return -1;
 		}
@@ -482,7 +490,7 @@ int conn_setTimeout(Connection conn, int timeout) {
 	}
 	tv.tv_sec = timeout;
 	tv.tv_usec = 0;
-	ctrl = setsockopt(conn.id, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	ctrl = setsockopt(conn.sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 	if (ctrl == -1) {
 		report_err("Cannot set the timeout");
 		return -1;
