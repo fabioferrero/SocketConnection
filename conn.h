@@ -32,13 +32,13 @@
 #define TIMEOUT_EXPIRED (errno == EAGAIN || errno == EWOULDBLOCK)
 
 typedef struct connection {
-	char address[42];
+	char address[46];
 	int port;
 	int sock;
 } Connection;
 
 typedef struct host	{
-	char address[42];
+	char address[46];
 	int port;
 	int sock;
 } Host;
@@ -100,5 +100,6 @@ int readn(int fd, void * buffer, int nbyte);
 /** DNS resolve **/
 char * getAddressByName(char * url);			// Returns the IP or NULL
 char * nextAddress();							// Returns the IP or NULL
+char * getAddressByName6(char * url);
 
 
