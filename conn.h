@@ -1,7 +1,7 @@
-/*	conn.h 
+/*	conn.h
 	written by Fabio Ferrero
 */
-#include <stdio.h> 		
+#include <stdio.h>
 #include <stdlib.h>		// exit();
 
 #include <unistd.h>		// close();
@@ -32,13 +32,13 @@
 #define TIMEOUT_EXPIRED (errno == EAGAIN || errno == EWOULDBLOCK)
 
 typedef struct connection {
-	char address[16];
+	char address[46];
 	int port;
-	int id;
+	int sock;
 } Connection;
 
 typedef struct host	{
-	char address[16];
+	char address[46];
 	int port;
 	int sock;
 } Host;
@@ -98,7 +98,7 @@ int writen(int fd, void * buffer, int nbyte);
 int readn(int fd, void * buffer, int nbyte);
 
 /** DNS resolve **/
-char * getAddressByName(char * url);			// Returns the IP or NULL
-char * nextAddress();							// Returns the IP or NULL
-
+char * getAddressByName(char * url, char * ip);	// Returns the IP or NULL
+char * nextAddress(char * ip);					// Returns the IP or NULL
+void useIPv6(int trueOrFalse);
 

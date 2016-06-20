@@ -35,10 +35,16 @@
 #define QUEUE_SIZE 32
 
 #define CORRECT(x) (x >= 0 && x < 256)
-#define TIMEOUT_EXPIRED (TIMEOUT && (errno == EAGAIN || errno == EWOULDBLOCK))
+#define TIMEOUT_EXP (TIMEOUT && (errno == EAGAIN || errno == EWOULDBLOCK))
+
+int isIPv4(char * address);
+
+uint8_t forceIPv4 = TRUE;
 
 uint32_t TIMEOUT = 0;
-struct hostent * host_info = NULL;
+
+struct addrinfo * host_info = NULL;
+struct hostent * h_info = NULL;
 
 void fatal_err(char *message) {
 	fprintf(stderr, "%s - (Error %d)\n", message, errno);
@@ -57,8 +63,10 @@ Host prepareServer(int port, int protocol) {
 
 	Host host;
 	char prot[4];
-
-	struct sockaddr_in addr;
+	int ctrl, n = 1;
+	
+	struct sockaddr_in addr4;
+	struct sockaddr_in6 addr6;
 	
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
@@ -67,13 +75,22 @@ Host prepareServer(int port, int protocol) {
 
 	switch (protocol) {
 		case TCP:
-			host.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			if (forceIPv4)
+				host.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			else
+				host.sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
 			strcpy(prot, "TCP");
 			break;
 
 		case UDP:
-			host.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			if (forceIPv4)
+				host.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			else
+				host.sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 			strcpy(prot, "UDP");
+			ctrl = setsockopt(host.sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &n, sizeof(n));
+			if (ctrl == -1)
+				report_err("Cannot reuse address");
 			break;
 
 		default:
@@ -83,25 +100,42 @@ Host prepareServer(int port, int protocol) {
 	if (host.sock == -1)
 		fatal_err("Cannot set the server socket");
 	else if (protocol == TCP)
-		printf("Connection set on %s\n", prot);
+		printf("[Connection set on %s]\n", prot);
 
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
-	addr.sin_addr.s_addr = INADDR_ANY;
+	if (forceIPv4) {
+		addr4.sin_family = AF_INET;
+		addr4.sin_port = htons(port);
+		addr4.sin_addr.s_addr = INADDR_ANY;
+	} else {
+		bzero(&addr6, sizeof(addr6));
+		addr6.sin6_flowinfo = 0;
+		addr6.sin6_family = AF_INET6;
+		addr6.sin6_port = htons(port);
+		addr6.sin6_addr = in6addr_any;
+	}
 	
 	if (protocol == TCP) {
+		/* On UDP the host structure is used to store the remote host address,
+		   so don't fill that field */
 		host.port = port;
-		strcpy(host.address, inet_ntoa(addr.sin_addr));
+		if (forceIPv4)
+			inet_ntop(AF_INET, &(addr4.sin_addr), host.address, 42);
+		else
+			inet_ntop(AF_INET6, &(addr6.sin6_addr), host.address, 42);
 	}
-	if (bind(host.sock, (SA*)&addr, sizeof(addr)))
+	if (forceIPv4) 
+		ctrl = bind(host.sock, (SA*)&addr4, sizeof(addr4));
+	else
+		ctrl = bind(host.sock, (SA*)&addr6, sizeof(addr6));
+	if (ctrl != 0)
 		fatal_err("Cannot prepare the server");
 
 	if (protocol == TCP) {
-		printf("Server prepared [address %s:%d]\n", host.address, host.port);
+		printf("[Server prepared on port %d]\n", host.port);
 		if (listen(host.sock, QUEUE_SIZE))
 			fatal_err("Cannot listen on specified address");
 	} else 
-		printf("Enabled UDP on port %d.\n", port);
+		printf("[Enabled UDP on port %d]\n", port);
 	
 	return host;
 }
@@ -118,16 +152,26 @@ Connection acceptConn(Host server) {
 
 	Connection conn;
 
-	struct sockaddr_in addr;
+	struct sockaddr_storage addr;
 	int addr_len = sizeof(addr);
 
-	conn.id = accept(server.sock, (SA*)&addr, (socklen_t*)&addr_len);
-	if (conn.id == -1) {
+	struct sockaddr_in *addr4;
+	struct sockaddr_in6 *addr6;
+
+	conn.sock = accept(server.sock, (SA*)&addr, (socklen_t*)&addr_len);
+	if (conn.sock == -1) {
 		report_err("Cannot accept a connection");
 	} else {
-		strcpy(conn.address, inet_ntoa(addr.sin_addr));
-		conn.port = ntohs(addr.sin_port);
-		printf("New connection from %s:%d\n", conn.address, conn.port);
+		if (forceIPv4) {
+			addr4 = (struct sockaddr_in*) &addr;
+			strcpy(conn.address, inet_ntoa(addr4->sin_addr));
+			conn.port = ntohs(addr4->sin_port);
+		} else {
+			addr6 = (struct sockaddr_in6*) &addr;
+			inet_ntop(AF_INET6, &(addr6->sin6_addr), conn.address, 46);
+			conn.port = ntohs(addr6->sin6_port);
+		}
+		printf("[New connection from %s:%d]\n", conn.address, conn.port);
 	}
 
 	return conn;
@@ -137,8 +181,6 @@ Host Host_init(char * address, int port) {
 
 	Host h;
 
-	if (checkaddress(address)) 
-		exit(-1);
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
 		exit(-1);
@@ -146,8 +188,12 @@ Host Host_init(char * address, int port) {
 	
 	strcpy(h.address, address);
 	h.port = port;
-		
-	h.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	
+	if (isIPv4(address)) {
+		h.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	} else {
+		h.sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	}
 	if (h.sock == -1)
 		fatal_err("Cannot set the host socket");
 
@@ -158,35 +204,48 @@ Connection conn_connect(char * address, int port) {
 	
 	Connection conn;
 	int retval;
-	struct sockaddr_in destination;
+	struct sockaddr_in dest4;
+	struct sockaddr_in6 dest6;
 	
-	if (checkaddress(address)) exit(-1);
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
 		exit(-1);
 	}
-
-	destination.sin_family = AF_INET;
-	destination.sin_port = htons(port);
-	inet_aton(address, &destination.sin_addr);
 	
-	conn.id = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (conn.id == -1)
-		fatal_err("Cannot create the connection");
+	if (isIPv4(address)) {
+		dest4.sin_family = AF_INET;
+		dest4.sin_port = htons(port);
+		inet_aton(address, &dest4.sin_addr);
 
-	retval = connect(conn.id, (SA*)&destination, sizeof(destination));
+		conn.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (conn.sock == -1)
+			fatal_err("Cannot create the connection");
+			
+		retval = connect(conn.sock, (SA*)&dest4, sizeof(dest4));
+	} else {
+		dest6.sin6_family = AF_INET6;
+		dest6.sin6_port = htons(port);
+		inet_pton(AF_INET6, address, &dest6.sin6_addr);
+
+		conn.sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+		if (conn.sock == -1)
+			fatal_err("Cannot create the connection");
+			
+		retval = connect(conn.sock, (SA*)&dest6, sizeof(dest6));
+	}
+
 	if (retval == -1)
 		fatal_err("Cannot connect to endpoint");
 	
 	strcpy(conn.address, address);
 	conn.port = port;
-	printf("Connected to %s:%d\n", conn.address, conn.port);
+	printf("[Connected to %s:%d]\n", conn.address, conn.port);
 	
 	return conn;
 }
 
 int conn_close(Connection conn) {
-	if (close(conn.id)) {
+	if (close(conn.sock)) {
 		report_err("Cannot close the connection");
 		return -1;
 	}
@@ -201,7 +260,7 @@ int conn_sends(Connection conn, char * string) {
 	dataremaining = strlen(string);
 
 	while (dataremaining > 0) {
-		datasended = send(conn.id, ptr, dataremaining, 0);
+		datasended = send(conn.sock, ptr, dataremaining, 0);
 		if (datasended <= 0) { //error
 			report_err("Cannot send string");
 			return -1;
@@ -224,7 +283,7 @@ int conn_sendn(Connection conn, void * data, int dataremaining) {
 	void *ptr = data;
 
 	while (dataremaining > 0) {
-		datasended = send(conn.id, ptr, dataremaining, 0);
+		datasended = send(conn.sock, ptr, dataremaining, 0);
 		if (datasended <= 0) { //error
 			report_err("Cannot send data");
 			return -1;
@@ -288,7 +347,7 @@ int conn_sendfile_tokenized(Connection conn, int fd, int file_size, int tokenlen
 			free(token);
 			return -1;
 		}
-		ctrl == conn_sendn(conn, token, bytes);
+		ctrl = conn_sendn(conn, token, bytes);
 		if (ctrl == -1) {
 			free(token);
 			return -1;
@@ -327,8 +386,8 @@ int conn_recvs(Connection conn, char * string, int str_len, char * terminator) {
 
 	while (str_len > 0) {
 		// Receive char by char
-		datareceived = recv(conn.id, ptr, sizeof(char), 0);
-		if (TIMEOUT_EXPIRED) {
+		datareceived = recv(conn.sock, ptr, sizeof(char), 0);
+		if (TIMEOUT_EXP) {
 			fprintf(stderr, "Timeout expired [%d sec]\n", TIMEOUT);
 			return -1;
 		}
@@ -374,8 +433,8 @@ int conn_recvn(Connection conn, void * data, int dataremaining) {
 	void * ptr = data;
 
 	while (dataremaining > 0) {
-		datareceived = recv(conn.id, ptr, dataremaining, 0);
-		if (TIMEOUT_EXPIRED) {
+		datareceived = recv(conn.sock, ptr, dataremaining, 0);
+		if (TIMEOUT_EXP) {
 			fprintf(stderr, "Timeout expired [%d sec]\n", TIMEOUT);
 			return -1;
 		}
@@ -482,7 +541,7 @@ int conn_setTimeout(Connection conn, int timeout) {
 	}
 	tv.tv_sec = timeout;
 	tv.tv_usec = 0;
-	ctrl = setsockopt(conn.id, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+	ctrl = setsockopt(conn.sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 	if (ctrl == -1) {
 		report_err("Cannot set the timeout");
 		return -1;
@@ -496,15 +555,24 @@ int sendstoHost(char * string, Host host) {
 
 	int bytes, str_len;
 
-	struct sockaddr_in destination;
-
-	destination.sin_family = AF_INET;
-	destination.sin_port = htons(host.port);
-	inet_aton(host.address, &destination.sin_addr);
-
+	struct sockaddr_in dest4;
+	struct sockaddr_in6 dest6;
+	
 	str_len = strlen(string);
+	
+	if (isIPv4(host.address)) {
+		dest4.sin_family = AF_INET;
+		dest4.sin_port = htons(host.port);
+		inet_aton(host.address, &dest4.sin_addr);
 
-	bytes = sendto(host.sock, string, str_len, 0, (SA*) &destination, (socklen_t)sizeof(destination));
+		bytes = sendto(host.sock, string, str_len, 0, (SA*) &dest4, (socklen_t)sizeof(dest4));
+	} else {
+		dest6.sin6_family = AF_INET6;
+		dest6.sin6_port = htons(host.port);
+		inet_pton(AF_INET6, host.address, &dest6.sin6_addr);
+
+		bytes = sendto(host.sock, string, str_len, 0, (SA*) &dest6, (socklen_t)sizeof(dest6));
+	}
 	if (bytes == -1) {
 		report_err("Cannot send datagram");
 		return -1;
@@ -521,13 +589,22 @@ int sendntoHost(void * data, int datalen, Host host) {
 
 	int bytes;
 
-	struct sockaddr_in destination;
+	struct sockaddr_in dest4;
+	struct sockaddr_in6 dest6;
+	
+	if (isIPv4(host.address)) {
+		dest4.sin_family = AF_INET;
+		dest4.sin_port = htons(host.port);
+		inet_aton(host.address, &dest4.sin_addr);
 
-	destination.sin_family = AF_INET;
-	destination.sin_port = htons(host.port);
-	inet_aton(host.address, &destination.sin_addr);
+		bytes = sendto(host.sock, data, datalen, 0, (SA*) &dest4, (socklen_t)sizeof(dest4));
+	} else {
+		dest6.sin6_family = AF_INET6;
+		dest6.sin6_port = htons(host.port);
+		inet_pton(AF_INET6, host.address, &dest6.sin6_addr);
 
-	bytes = sendto(host.sock, data, datalen, 0, (SA*) &destination, (socklen_t)sizeof(destination));
+		bytes = sendto(host.sock, data, datalen, 0, (SA*) &dest6, (socklen_t)sizeof(dest6));
+	}
 	if (bytes == -1) {
 		report_err("Cannot send datagram");
 		return -1;
@@ -545,7 +622,10 @@ int recvsfromHost(char * string, int str_len, Host * host, int timeout) {
 	int remote_len, bytes;
 
 	struct timeval tv;
-	struct sockaddr_in remote;
+	struct sockaddr_storage remote;
+	
+	struct sockaddr_in *addr4;
+	struct sockaddr_in6 *addr6;
 
 	if (timeout >= 0) {
 		tv.tv_sec = timeout;
@@ -568,9 +648,16 @@ int recvsfromHost(char * string, int str_len, Host * host, int timeout) {
 	}
 	
 	string[bytes] = '\0';
-	
-	strcpy(host->address, inet_ntoa(remote.sin_addr));
-	host->port = ntohs(remote.sin_port);
+
+	if (forceIPv4) {
+		addr4 = (struct sockaddr_in*) &remote;
+		strcpy(host->address, inet_ntoa(addr4->sin_addr));
+		host->port = ntohs(addr4->sin_port);
+	} else {
+		addr6 = (struct sockaddr_in6*) &remote;
+		inet_ntop(AF_INET6, &(addr6->sin6_addr), host->address, 46);
+		host->port = ntohs(addr6->sin6_port);
+	}
 
 	return 0;
 }
@@ -580,7 +667,10 @@ int recvnfromHost(void * data, int datalen, Host * host, int timeout) {
 	int remote_len, bytes;
 
 	struct timeval tv;
-	struct sockaddr_in remote;
+	struct sockaddr_storage remote;
+	
+	struct sockaddr_in *addr4;
+	struct sockaddr_in6 *addr6;
 
 	if (timeout >= 0) {
 		tv.tv_sec = timeout;
@@ -602,8 +692,15 @@ int recvnfromHost(void * data, int datalen, Host * host, int timeout) {
 		return -1;
 	}
 	
-	strcpy(host->address, inet_ntoa(remote.sin_addr));
-	host->port = ntohs(remote.sin_port);
+	if (forceIPv4) {
+		addr4 = (struct sockaddr_in*) &remote;
+		strcpy(host->address, inet_ntoa(addr4->sin_addr));
+		host->port = ntohs(addr4->sin_port);
+	} else {
+		addr6 = (struct sockaddr_in6*) &remote;
+		inet_ntop(AF_INET6, &(addr6->sin6_addr), host->address, 46);
+		host->port = ntohs(addr6->sin6_port);
+	}
 
 	return 0;
 }
@@ -613,7 +710,7 @@ int recvnfromHost(void * data, int datalen, Host * host, int timeout) {
 int xdr_sendfile(XDR * xdrOut, int fd, int file_size) {
 	
 	unsigned int tokenlen = 4096;
-	int ctrl, sended_bytes = 0, count = 0;
+	int sended_bytes = 0, count = 0;
 	int bytes, frequency = (file_size / tokenlen / 3000)+1;
 	float percent;
 	char * token;
@@ -722,6 +819,20 @@ int checkaddress(char * address) {
 	}
 }
 
+int isIPv4(char * address) {
+	int a, b, c, d;
+
+	if ((sscanf(address, "%d.%d.%d.%d", &a, &b, &c, &d)) == EOF) {
+		return FALSE;
+	}
+
+	if (CORRECT(a) && CORRECT(b) && CORRECT(c) && CORRECT(d))
+		return TRUE;
+	else {
+		return FALSE;
+	}
+}
+
 int checkport(char * port) {
 	int p = atoi(port);
 	
@@ -792,21 +903,19 @@ int readn(int fd, void * buffer, int dataremaining) {
 	return 0;
 }
 
-/* TODO IPv6 support */
-
-char * getAddressByName(char * url) {
+char * getAddressByName4(char * url) {
 	
 	struct in_addr *ip, **ips;
 	
-	host_info = gethostbyname(url);
-	if (host_info == NULL) {
+	h_info = gethostbyname(url);
+	if (h_info == NULL) {
 		fprintf(stderr, "Cannot resolve the name %s\n", url);
 		return NULL;
 	}
 	/* Use the length as a counter for display the correct address */
-	host_info->h_length = 1;
+	h_info->h_length = 1;
 	
-	ips = (struct in_addr**)host_info->h_addr_list;
+	ips = (struct in_addr**)h_info->h_addr_list;
 	ip = ips[0];
 	
 	if (ip == NULL)
@@ -815,20 +924,148 @@ char * getAddressByName(char * url) {
 	return inet_ntoa(*ip);
 }
 
-char * nextAddress() {
+char * nextAddress4() {
 
 	struct in_addr *ip, **ips;
 	
-	if (host_info == NULL) {
+	if (h_info == NULL) {
 		fprintf(stderr, "Address not previously specified.\n");
 		return NULL;
 	}
 	
-	ips = (struct in_addr**)host_info->h_addr_list;
-	ip = ips[host_info->h_length++];
+	ips = (struct in_addr**)h_info->h_addr_list;
+	ip = ips[h_info->h_length++];
 	
 	if (ip == NULL)
 		return NULL;
 
 	return inet_ntoa(*ip);
 }
+
+char * getAddressByName(char * url, char * ip_addr) {
+
+	struct addrinfo hints, info, *h6_info = NULL, *tmp;
+	int ctrl;
+	
+	struct sockaddr_in *ipv4;
+	struct sockaddr_in6 *ipv6;
+	
+	if (ip_addr == NULL) {
+		report_err("No memory allocated for IP address");
+		return NULL;
+	} 
+	
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	
+	ctrl = getaddrinfo(url, NULL, &hints, &host_info);
+	if (ctrl != 0) {
+		//fprintf(stderr, "Cannot resolve the IPv4 address %s\n%s\n", url, gai_strerror(ctrl));
+		host_info = NULL;
+	}
+	
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET6;
+	hints.ai_socktype = SOCK_STREAM;
+	
+	ctrl = getaddrinfo(url, NULL, &hints, &h6_info);
+	if (ctrl != 0) {
+		//fprintf(stderr, "Cannot resolve the IPv6 address %s\n%s\n", url, gai_strerror(ctrl));
+		h6_info = NULL;
+	}
+	
+	if (host_info != NULL) {
+		for (tmp = host_info; tmp->ai_next != NULL; tmp = tmp->ai_next) {} 
+			// Find the last element of the list;
+
+		tmp->ai_next = h6_info;	
+	} else if (h6_info != NULL) {
+		host_info = h6_info;
+	} else { 
+		return NULL;
+	}
+	
+	info = *host_info;
+	
+	switch (info.ai_family) {
+		case AF_INET:
+			ipv4 = (struct sockaddr_in *) info.ai_addr;
+			if (inet_ntop(AF_INET, &(ipv4->sin_addr), ip_addr, 46) == NULL) {
+				report_err("Cannot convert IPv4 address");
+				ip_addr = NULL;
+			}
+			break;
+		case AF_INET6:
+			ipv6 = (struct sockaddr_in6 *) info.ai_addr;
+			if (inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_addr, 46) == NULL) {
+				report_err("Cannot convert IPv6 address");
+				ip_addr = NULL;
+			}
+			break;
+		default:
+			fprintf(stderr, "Address family unrecognized.\n"); 
+			ip_addr = NULL;
+			break;
+	}
+	
+	free(host_info);
+	host_info = info.ai_next;
+	
+	return ip_addr;
+}
+
+char * nextAddress(char * ip_addr) {
+
+	struct addrinfo info;
+	
+	struct sockaddr_in *ipv4;
+	struct sockaddr_in6 *ipv6;
+	
+	if (ip_addr == NULL) {
+		report_err("No memory allocated for IP address");
+		return NULL;
+	}
+	
+	if (host_info == NULL) {
+		// Last element of the list
+		freeaddrinfo(host_info);
+		return NULL;
+	}
+	
+	info = *host_info;
+	
+	switch (info.ai_family) {
+		case AF_INET:
+			ipv4 = (struct sockaddr_in *) info.ai_addr;
+			if (inet_ntop(AF_INET, &(ipv4->sin_addr), ip_addr, 46) == NULL) {
+				report_err("Cannot convert IPv4 address");
+				ip_addr = NULL;
+			}
+			break;
+		case AF_INET6:
+			ipv6 = (struct sockaddr_in6 *) info.ai_addr;
+			if (inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_addr, 46) == NULL) {
+				report_err("Cannot convert IPv6 address");
+				ip_addr = NULL;
+			}
+			break;
+		default:
+			fprintf(stderr, "Address family unrecognized.\n"); 
+			ip_addr = NULL;
+			break;
+	}
+	
+	free(host_info);
+	host_info = info.ai_next;
+	
+	return ip_addr;
+}
+
+void useIPv6(int use6) {
+	if (use6)
+		forceIPv4 = FALSE;
+	else 
+		forceIPv4 = TRUE;
+}
+

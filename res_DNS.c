@@ -5,16 +5,18 @@
 
 int main(int argc, char *argv[]) {
 
-	char * ip;
+	char *ip = malloc(46*sizeof(char));
 	
-	ip = getAddressByName(argv[1]);
-	if (ip == NULL) return 0;
+	getAddressByName(argv[1], ip);
+	if (ip == NULL) 
+		return 0;
 		
 	printf("IP: %s\n", ip);
-	while((ip = nextAddress()) != NULL) {
+	
+	while((nextAddress(ip)) != NULL) {
 		printf("IP: %s\n", ip);
 	}
 	
+	free(ip);
 	return 0;
-
 }

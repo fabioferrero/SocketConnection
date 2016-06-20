@@ -6,7 +6,7 @@ udp : server_udp client_udp
 
 xdr : server_xdr client_xdr
 
-all : tcp udp
+all : tcp udp xdr
 
 server_tcp : server_tcp.o $(common_obj)
 	gcc -o server_tcp server_tcp.o $(common_obj) -lpthread
