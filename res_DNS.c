@@ -11,20 +11,11 @@ int main(int argc, char *argv[]) {
 	if (ip == NULL) 
 		return 0;
 		
-	printf("IPv4: %s\n", ip);
-	while((ip = nextAddress()) != NULL) {
-		printf("IP: %s\n", ip);
-	}
-	
-	ip = getAddressByName6(argv[1]);
-	if (ip == NULL) 
-		return 0;
-		
-	printf("IPv6: %s\n", ip);
-	while((ip = nextAddress()) != NULL) {
-		printf("IP: %s\n", ip);
-	}
-	
+	printf("IP: %s\n", ip);
 	free(ip);
+	while((ip = nextAddress()) != NULL) {
+		printf("IP: %s\n", ip);
+		free(ip);
+	}
 	return 0;
 }

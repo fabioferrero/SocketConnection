@@ -39,6 +39,7 @@
 
 uint32_t TIMEOUT = 0;
 struct addrinfo * host_info = NULL;
+struct hostent * h_info = NULL;
 
 void fatal_err(char *message) {
 	fprintf(stderr, "%s - (Error %d)\n", message, errno);
@@ -796,9 +797,48 @@ int readn(int fd, void * buffer, int dataremaining) {
 	return 0;
 }
 
-char * getAddressByName(char * url) {
+char * getAddressByName4(char * url) {
 	
-	struct addrinfo hints, info;
+	struct in_addr *ip, **ips;
+	
+	h_info = gethostbyname(url);
+	if (h_info == NULL) {
+		fprintf(stderr, "Cannot resolve the name %s\n", url);
+		return NULL;
+	}
+	/* Use the length as a counter for display the correct address */
+	h_info->h_length = 1;
+	
+	ips = (struct in_addr**)h_info->h_addr_list;
+	ip = ips[0];
+	
+	if (ip == NULL)
+		return NULL;
+		
+	return inet_ntoa(*ip);
+}
+
+char * nextAddress4() {
+
+	struct in_addr *ip, **ips;
+	
+	if (h_info == NULL) {
+		fprintf(stderr, "Address not previously specified.\n");
+		return NULL;
+	}
+	
+	ips = (struct in_addr**)h_info->h_addr_list;
+	ip = ips[h_info->h_length++];
+	
+	if (ip == NULL)
+		return NULL;
+
+	return inet_ntoa(*ip);
+}
+
+char * getAddressByName(char * url) {
+
+	struct addrinfo hints, info, *h6_info = NULL, *tmp;
 	int ctrl;
 	char * ip_addr = malloc(46*sizeof(char));
 	
@@ -816,60 +856,28 @@ char * getAddressByName(char * url) {
 	
 	ctrl = getaddrinfo(url, NULL, &hints, &host_info);
 	if (ctrl != 0) {
-		fprintf(stderr, "Cannot resolve the address %s\n%s\n", url, gai_strerror(ctrl));
-		return NULL;
+		//fprintf(stderr, "Cannot resolve the IPv4 address %s\n%s\n", url, gai_strerror(ctrl));
+		host_info = NULL;
 	}
-	
-	info = *host_info;
-	
-	switch (info.ai_family) {
-		case AF_INET:
-			ipv4 = (struct sockaddr_in *) info.ai_addr;
-			if (inet_ntop(AF_INET, &(ipv4->sin_addr), ip_addr, 46) == NULL) {
-				report_err("Cannot convert IPv4 address");
-				ip_addr = NULL;
-			}
-			break;
-		case AF_INET6:
-			ipv6 = (struct sockaddr_in6 *) info.ai_addr;
-			if (inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_addr, 46) == NULL) {
-				report_err("Cannot convert IPv6 address");
-				ip_addr = NULL;
-			}
-			break;
-		default:
-			fprintf(stderr, "Address family unrecognized.\n"); 
-			ip_addr = NULL;
-			break;
-	}
-	
-	free(host_info);
-	host_info = info.ai_next;
-	
-	return ip_addr;
-}
-
-char * getAddressByName6(char * url) {
-
-	struct addrinfo hints, info;
-	int ctrl;
-	char * ip_addr = malloc(46*sizeof(char));
-	
-	struct sockaddr_in *ipv4;
-	struct sockaddr_in6 *ipv6;
-	
-	if (ip_addr == NULL) {
-		report_err("Cannot allocate memory for IP address");
-		return NULL;
-	} 
 	
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET6;
 	hints.ai_socktype = SOCK_STREAM;
 	
-	ctrl = getaddrinfo(url, NULL, &hints, &host_info);
+	ctrl = getaddrinfo(url, NULL, &hints, &h6_info);
 	if (ctrl != 0) {
-		fprintf(stderr, "Cannot resolve the address %s\n%s\n", url, gai_strerror(ctrl));
+		//fprintf(stderr, "Cannot resolve the IPv6 address %s\n%s\n", url, gai_strerror(ctrl));
+		h6_info = NULL;
+	}
+	
+	if (host_info != NULL) {
+		for (tmp = host_info; tmp->ai_next != NULL; tmp = tmp->ai_next) {} 
+			// Find the last element of the list;
+
+		tmp->ai_next = h6_info;	
+	} else if (h6_info != NULL) {
+		host_info = h6_info;
+	} else { 
 		return NULL;
 	}
 	
@@ -949,4 +957,8 @@ char * nextAddress() {
 	host_info = info.ai_next;
 	
 	return ip_addr;
+}
+
+void freeAll() {
+
 }

@@ -96,10 +96,10 @@ int checkport(char * port);						// Returns the port number or -1
 int readline(char * string, int str_len);		// Returns the string lenght
 int writen(int fd, void * buffer, int nbyte);
 int readn(int fd, void * buffer, int nbyte);
+void freeAll();
 
 /** DNS resolve **/
 char * getAddressByName(char * url);			// Returns the IP or NULL
 char * nextAddress();							// Returns the IP or NULL
-char * getAddressByName6(char * url);
 
 
