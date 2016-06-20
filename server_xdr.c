@@ -81,17 +81,13 @@ void serveConn(Connection conn) {
 
 			/* Send the file */
 			
-			streamOut = fdopen(dup(conn.id), "w");
+			streamOut = fdopen(dup(conn.sock), "w");
 			xdrstdio_create(&xdrsOut, streamOut, XDR_ENCODE);
+			setbuf(streamOut, NULL);
 			
 			bytes = xdr_sendfile(&xdrsOut, fd, file_dim);
 			if (bytes == -1) 
 				break;
-			bytes = fflush(streamOut);
-			if (bytes != 0) {
-				report_err("Cannot flush XDR memory");
-				break;
-			}
 			
 			xdr_destroy(&xdrsOut);
 			fclose(streamOut);
@@ -173,7 +169,7 @@ int main(int argc, char *argv[]) {
 		
 		printf("Waiting a new connection...\n");
 		conn = acceptConn(thisServer);
-		if (conn.id == -1) continue;
+		if (conn.sock == -1) continue;
 
 		if (!fork()) {
 			/* Child process close the server connection */

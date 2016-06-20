@@ -36,6 +36,8 @@
 
 #define CORRECT(x) (x >= 0 && x < 256)
 #define TIMEOUT_EXP (TIMEOUT && (errno == EAGAIN || errno == EWOULDBLOCK))
+#define IPv4  0
+#define IPv6 -1
 
 uint32_t TIMEOUT = 0;
 struct addrinfo * host_info = NULL;
@@ -126,16 +128,25 @@ Connection acceptConn(Host server) {
 
 	Connection conn;
 
-	struct sockaddr_in addr;
+	struct sockaddr_storage addr;
 	int addr_len = sizeof(addr);
+
+	struct sockaddr_in *addr4;
+	struct sockaddr_in6 *addr6;
 
 	conn.sock = accept(server.sock, (SA*)&addr, (socklen_t*)&addr_len);
 	if (conn.sock == -1) {
 		report_err("Cannot accept a connection");
 	} else {
-		strcpy(conn.address, inet_ntoa(addr.sin_addr));
-		//inet_ntop(AF_INET6, &(addr.sin6_addr), conn.address, 42);
-		conn.port = ntohs(addr.sin_port);
+		if (addr.ss_family == AF_INET) {
+			addr4 = (struct sockaddr_in*) &addr;
+			strcpy(conn.address, inet_ntoa(addr4->sin_addr));
+			conn.port = ntohs(addr4->sin_port);
+		} else if (addr.ss_family == AF_INET6) {
+			addr6 = (struct sockaddr_in6*) &addr;
+			inet_ntop(AF_INET6, &(addr6->sin6_addr), conn.address, 46);
+			conn.port = ntohs(addr6->sin6_port);
+		}
 		printf("[New connection from %s:%d]\n", conn.address, conn.port);
 	}
 
@@ -146,8 +157,6 @@ Host Host_init(char * address, int port) {
 
 	Host h;
 
-	if (checkaddress(address)) 
-		exit(-1);
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
 		exit(-1);
@@ -155,8 +164,12 @@ Host Host_init(char * address, int port) {
 	
 	strcpy(h.address, address);
 	h.port = port;
-		
-	h.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	
+	if (checkaddress(address) == IPv4) {
+		h.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	} else {
+		h.sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	}
 	if (h.sock == -1)
 		fatal_err("Cannot set the host socket");
 
@@ -167,23 +180,36 @@ Connection conn_connect(char * address, int port) {
 	
 	Connection conn;
 	int retval;
-	struct sockaddr_in destination;
+	struct sockaddr_in dest4;
+	struct sockaddr_in6 dest6;
 	
-	if (checkaddress(address)) exit(-1);
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
 		exit(-1);
 	}
-
-	destination.sin_family = AF_INET;
-	destination.sin_port = htons(port);
-	inet_aton(address, &destination.sin_addr);
 	
-	conn.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (conn.sock == -1)
-		fatal_err("Cannot create the connection");
+	if (checkaddress(address) == IPv4) {
+		dest4.sin_family = AF_INET;
+		dest4.sin_port = htons(port);
+		inet_aton(address, &dest4.sin_addr);
 
-	retval = connect(conn.sock, (SA*)&destination, sizeof(destination));
+		conn.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (conn.sock == -1)
+			fatal_err("Cannot create the connection");
+			
+		retval = connect(conn.sock, (SA*)&dest4, sizeof(dest4));
+	} else {
+		dest6.sin6_family = AF_INET6;
+		dest6.sin6_port = htons(port);
+		inet_pton(AF_INET6, address, &dest6.sin6_addr);
+
+		conn.sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+		if (conn.sock == -1)
+			fatal_err("Cannot create the connection");
+			
+		retval = connect(conn.sock, (SA*)&dest6, sizeof(dest6));
+	}
+
 	if (retval == -1)
 		fatal_err("Cannot connect to endpoint");
 	

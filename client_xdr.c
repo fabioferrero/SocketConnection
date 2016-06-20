@@ -51,7 +51,7 @@ int requestFile(Connection conn, char * filename) {
 	
 		/* Receive the file */
 		
-		streamIn = fdopen(dup(conn.id), "r");
+		streamIn = fdopen(dup(conn.sock), "r");
 		xdrstdio_create(&xdrsIn, streamIn, XDR_DECODE);
 		
 		ctrl = xdr_recvfile(&xdrsIn, fd, file_dim);

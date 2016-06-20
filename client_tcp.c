@@ -96,8 +96,7 @@ int main(int argc, char *argv[]) {
 		exit(-1);
 	}
 
-	if (checkaddress(argv[1])) 
-		return -1;
+	//if (checkaddress(argv[1])) return -1;
 
 	conn = conn_connect(argv[1], checkport(argv[2]));
 	
