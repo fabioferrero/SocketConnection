@@ -836,17 +836,16 @@ char * nextAddress4() {
 	return inet_ntoa(*ip);
 }
 
-char * getAddressByName(char * url) {
+char * getAddressByName(char * url, char * ip_addr) {
 
 	struct addrinfo hints, info, *h6_info = NULL, *tmp;
 	int ctrl;
-	char * ip_addr = malloc(46*sizeof(char));
 	
 	struct sockaddr_in *ipv4;
 	struct sockaddr_in6 *ipv6;
 	
 	if (ip_addr == NULL) {
-		report_err("Cannot allocate memory for IP address");
+		report_err("No memory allocated for IP address");
 		return NULL;
 	} 
 	
@@ -910,23 +909,21 @@ char * getAddressByName(char * url) {
 	return ip_addr;
 }
 
-char * nextAddress() {
+char * nextAddress(char * ip_addr) {
 
 	struct addrinfo info;
-	char * ip_addr = malloc(46*sizeof(char));
 	
 	struct sockaddr_in *ipv4;
 	struct sockaddr_in6 *ipv6;
 	
 	if (ip_addr == NULL) {
-		report_err("Cannot allocate memory for IP address");
+		report_err("No memory allocated for IP address");
 		return NULL;
-	} 
+	}
 	
 	if (host_info == NULL) {
 		// Last element of the list
 		freeaddrinfo(host_info);
-		free(ip_addr);
 		return NULL;
 	}
 	

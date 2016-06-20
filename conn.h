@@ -99,7 +99,7 @@ int readn(int fd, void * buffer, int nbyte);
 void freeAll();
 
 /** DNS resolve **/
-char * getAddressByName(char * url);			// Returns the IP or NULL
-char * nextAddress();							// Returns the IP or NULL
+char * getAddressByName(char * url, char * ip);	// Returns the IP or NULL
+char * nextAddress(char * ip);					// Returns the IP or NULL
 
 
