@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
 			while(TRUE) {
 				printf("Waiting a new connection...\n");
 				conn = acceptConn(thisServer);
-				if (conn.id == -1) continue;
+				if (conn.sock == -1) continue;
 
 				serveConn(conn);
 				conn_close(conn);

@@ -36,10 +36,13 @@
 
 #define CORRECT(x) (x >= 0 && x < 256)
 #define TIMEOUT_EXP (TIMEOUT && (errno == EAGAIN || errno == EWOULDBLOCK))
-#define IPv4  0
-#define IPv6 -1
+
+int isIPv4(char * address);
+
+uint8_t forceIPv4 = TRUE;
 
 uint32_t TIMEOUT = 0;
+
 struct addrinfo * host_info = NULL;
 struct hostent * h_info = NULL;
 
@@ -60,8 +63,10 @@ Host prepareServer(int port, int protocol) {
 
 	Host host;
 	char prot[4];
-
-	struct sockaddr_in6 addr;
+	int ctrl, n = 1;
+	
+	struct sockaddr_in addr4;
+	struct sockaddr_in6 addr6;
 	
 	if (port < 0 || port > 65536) {
 		fprintf(stderr, "Wrong port specification or format\n");
@@ -70,13 +75,22 @@ Host prepareServer(int port, int protocol) {
 
 	switch (protocol) {
 		case TCP:
-			host.sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+			if (forceIPv4)
+				host.sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			else
+				host.sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
 			strcpy(prot, "TCP");
 			break;
 
 		case UDP:
-			host.sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+			if (forceIPv4)
+				host.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+			else
+				host.sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 			strcpy(prot, "UDP");
+			ctrl = setsockopt(host.sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &n, sizeof(n));
+			if (ctrl == -1)
+				report_err("Cannot reuse address");
 			break;
 
 		default:
@@ -88,22 +102,32 @@ Host prepareServer(int port, int protocol) {
 	else if (protocol == TCP)
 		printf("[Connection set on %s]\n", prot);
 
-	bzero((char *) &addr, sizeof(addr));
-	
-	addr.sin6_flowinfo = 0;
-	addr.sin6_family = AF_INET6;
-	addr.sin6_port = htons(port);
-	addr.sin6_addr = in6addr_any;
+	if (forceIPv4) {
+		addr4.sin_family = AF_INET;
+		addr4.sin_port = htons(port);
+		addr4.sin_addr.s_addr = INADDR_ANY;
+	} else {
+		bzero(&addr6, sizeof(addr6));
+		addr6.sin6_flowinfo = 0;
+		addr6.sin6_family = AF_INET6;
+		addr6.sin6_port = htons(port);
+		addr6.sin6_addr = in6addr_any;
+	}
 	
 	if (protocol == TCP) {
 		/* On UDP the host structure is used to store the remote host address,
 		   so don't fill that field */
 		host.port = port;
-		if (inet_ntop(AF_INET6, &(addr.sin6_addr), host.address, 42) == NULL) {
-			report_err("Wrong address convertion");
-		}
+		if (forceIPv4)
+			inet_ntop(AF_INET, &(addr4.sin_addr), host.address, 42);
+		else
+			inet_ntop(AF_INET6, &(addr6.sin6_addr), host.address, 42);
 	}
-	if (bind(host.sock, (SA*)&addr, sizeof(addr)))
+	if (forceIPv4) 
+		ctrl = bind(host.sock, (SA*)&addr4, sizeof(addr4));
+	else
+		ctrl = bind(host.sock, (SA*)&addr6, sizeof(addr6));
+	if (ctrl != 0)
 		fatal_err("Cannot prepare the server");
 
 	if (protocol == TCP) {
@@ -138,11 +162,11 @@ Connection acceptConn(Host server) {
 	if (conn.sock == -1) {
 		report_err("Cannot accept a connection");
 	} else {
-		if (addr.ss_family == AF_INET) {
+		if (forceIPv4) {
 			addr4 = (struct sockaddr_in*) &addr;
 			strcpy(conn.address, inet_ntoa(addr4->sin_addr));
 			conn.port = ntohs(addr4->sin_port);
-		} else if (addr.ss_family == AF_INET6) {
+		} else {
 			addr6 = (struct sockaddr_in6*) &addr;
 			inet_ntop(AF_INET6, &(addr6->sin6_addr), conn.address, 46);
 			conn.port = ntohs(addr6->sin6_port);
@@ -165,7 +189,7 @@ Host Host_init(char * address, int port) {
 	strcpy(h.address, address);
 	h.port = port;
 	
-	if (checkaddress(address) == IPv4) {
+	if (isIPv4(address)) {
 		h.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	} else {
 		h.sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
@@ -188,7 +212,7 @@ Connection conn_connect(char * address, int port) {
 		exit(-1);
 	}
 	
-	if (checkaddress(address) == IPv4) {
+	if (isIPv4(address)) {
 		dest4.sin_family = AF_INET;
 		dest4.sin_port = htons(port);
 		inet_aton(address, &dest4.sin_addr);
@@ -531,15 +555,24 @@ int sendstoHost(char * string, Host host) {
 
 	int bytes, str_len;
 
-	struct sockaddr_in destination;
-
-	destination.sin_family = AF_INET;
-	destination.sin_port = htons(host.port);
-	inet_aton(host.address, &destination.sin_addr);
-
+	struct sockaddr_in dest4;
+	struct sockaddr_in6 dest6;
+	
 	str_len = strlen(string);
+	
+	if (isIPv4(host.address)) {
+		dest4.sin_family = AF_INET;
+		dest4.sin_port = htons(host.port);
+		inet_aton(host.address, &dest4.sin_addr);
 
-	bytes = sendto(host.sock, string, str_len, 0, (SA*) &destination, (socklen_t)sizeof(destination));
+		bytes = sendto(host.sock, string, str_len, 0, (SA*) &dest4, (socklen_t)sizeof(dest4));
+	} else {
+		dest6.sin6_family = AF_INET6;
+		dest6.sin6_port = htons(host.port);
+		inet_pton(AF_INET6, host.address, &dest6.sin6_addr);
+
+		bytes = sendto(host.sock, string, str_len, 0, (SA*) &dest6, (socklen_t)sizeof(dest6));
+	}
 	if (bytes == -1) {
 		report_err("Cannot send datagram");
 		return -1;
@@ -556,13 +589,22 @@ int sendntoHost(void * data, int datalen, Host host) {
 
 	int bytes;
 
-	struct sockaddr_in destination;
+	struct sockaddr_in dest4;
+	struct sockaddr_in6 dest6;
+	
+	if (isIPv4(host.address)) {
+		dest4.sin_family = AF_INET;
+		dest4.sin_port = htons(host.port);
+		inet_aton(host.address, &dest4.sin_addr);
 
-	destination.sin_family = AF_INET;
-	destination.sin_port = htons(host.port);
-	inet_aton(host.address, &destination.sin_addr);
+		bytes = sendto(host.sock, data, datalen, 0, (SA*) &dest4, (socklen_t)sizeof(dest4));
+	} else {
+		dest6.sin6_family = AF_INET6;
+		dest6.sin6_port = htons(host.port);
+		inet_pton(AF_INET6, host.address, &dest6.sin6_addr);
 
-	bytes = sendto(host.sock, data, datalen, 0, (SA*) &destination, (socklen_t)sizeof(destination));
+		bytes = sendto(host.sock, data, datalen, 0, (SA*) &dest6, (socklen_t)sizeof(dest6));
+	}
 	if (bytes == -1) {
 		report_err("Cannot send datagram");
 		return -1;
@@ -580,7 +622,10 @@ int recvsfromHost(char * string, int str_len, Host * host, int timeout) {
 	int remote_len, bytes;
 
 	struct timeval tv;
-	struct sockaddr_in remote;
+	struct sockaddr_storage remote;
+	
+	struct sockaddr_in *addr4;
+	struct sockaddr_in6 *addr6;
 
 	if (timeout >= 0) {
 		tv.tv_sec = timeout;
@@ -601,9 +646,16 @@ int recvsfromHost(char * string, int str_len, Host * host, int timeout) {
 	}
 	
 	string[bytes] = '\0';
-	
-	strcpy(host->address, inet_ntoa(remote.sin_addr));
-	host->port = ntohs(remote.sin_port);
+
+	if (forceIPv4) {
+		addr4 = (struct sockaddr_in*) &remote;
+		strcpy(host->address, inet_ntoa(addr4->sin_addr));
+		host->port = ntohs(addr4->sin_port);
+	} else {
+		addr6 = (struct sockaddr_in6*) &remote;
+		inet_ntop(AF_INET6, &(addr6->sin6_addr), host->address, 46);
+		host->port = ntohs(addr6->sin6_port);
+	}
 
 	return 0;
 }
@@ -613,7 +665,10 @@ int recvnfromHost(void * data, int datalen, Host * host, int timeout) {
 	int remote_len, bytes;
 
 	struct timeval tv;
-	struct sockaddr_in remote;
+	struct sockaddr_storage remote;
+	
+	struct sockaddr_in *addr4;
+	struct sockaddr_in6 *addr6;
 
 	if (timeout >= 0) {
 		tv.tv_sec = timeout;
@@ -633,8 +688,15 @@ int recvnfromHost(void * data, int datalen, Host * host, int timeout) {
 		return -1;
 	}
 	
-	strcpy(host->address, inet_ntoa(remote.sin_addr));
-	host->port = ntohs(remote.sin_port);
+	if (forceIPv4) {
+		addr4 = (struct sockaddr_in*) &remote;
+		strcpy(host->address, inet_ntoa(addr4->sin_addr));
+		host->port = ntohs(addr4->sin_port);
+	} else {
+		addr6 = (struct sockaddr_in6*) &remote;
+		inet_ntop(AF_INET6, &(addr6->sin6_addr), host->address, 46);
+		host->port = ntohs(addr6->sin6_port);
+	}
 
 	return 0;
 }
@@ -644,7 +706,7 @@ int recvnfromHost(void * data, int datalen, Host * host, int timeout) {
 int xdr_sendfile(XDR * xdrOut, int fd, int file_size) {
 	
 	unsigned int tokenlen = 4096;
-	int ctrl, sended_bytes = 0, count = 0;
+	int sended_bytes = 0, count = 0;
 	int bytes, frequency = (file_size / tokenlen / 3000)+1;
 	float percent;
 	char * token;
@@ -750,6 +812,20 @@ int checkaddress(char * address) {
 	else {
 		fprintf(stderr, "Wrong address format\n");
 		return -1;
+	}
+}
+
+int isIPv4(char * address) {
+	int a, b, c, d;
+
+	if ((sscanf(address, "%d.%d.%d.%d", &a, &b, &c, &d)) == EOF) {
+		return FALSE;
+	}
+
+	if (CORRECT(a) && CORRECT(b) && CORRECT(c) && CORRECT(d))
+		return TRUE;
+	else {
+		return FALSE;
 	}
 }
 
@@ -982,6 +1058,10 @@ char * nextAddress(char * ip_addr) {
 	return ip_addr;
 }
 
-void freeAll() {
-
+void useIPv6(int use6) {
+	if (use6)
+		forceIPv4 = FALSE;
+	else 
+		forceIPv4 = TRUE;
 }
+

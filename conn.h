@@ -1,7 +1,7 @@
-/*	conn.h 
+/*	conn.h
 	written by Fabio Ferrero
 */
-#include <stdio.h> 		
+#include <stdio.h>
 #include <stdlib.h>		// exit();
 
 #include <unistd.h>		// close();
@@ -96,10 +96,9 @@ int checkport(char * port);						// Returns the port number or -1
 int readline(char * string, int str_len);		// Returns the string lenght
 int writen(int fd, void * buffer, int nbyte);
 int readn(int fd, void * buffer, int nbyte);
-void freeAll();
 
 /** DNS resolve **/
 char * getAddressByName(char * url, char * ip);	// Returns the IP or NULL
 char * nextAddress(char * ip);					// Returns the IP or NULL
-
+void useIPv6(int trueOrFalse);
 

@@ -15,8 +15,7 @@ int main(int argc, char *argv[]) {
 		exit(-1);
 	}
 	
-	ctrl = checkaddress(argv[1]);
-	if (ctrl == -1) return -1;
+	//if (checkaddress(argv[1])) return -1;
 	
 	port = checkport(argv[2]);
 	if (port == -1) return -1;
